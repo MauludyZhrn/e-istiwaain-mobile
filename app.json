@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "e-istiwaain",
+    "slug": "e-istiwaain",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/icon.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/icon_gold.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.mldyzhrn.eistiwaain"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f258df95-d81f-4ffa-82b7-8d8382643d88"
+      }
+    }
+  }
+}
