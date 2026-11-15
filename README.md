@@ -64,9 +64,13 @@ e-istiwaain/
 │   ├── audio/                 # Audio adzan_biasa.mp3 & adzan_subuh.mp3
 │   ├── e-Istiwaain-Logo/      # Paket aset ikon, logo, android res & web favicon
 │   └── istiwaain.glb          # Model 3D instrumen Istiwa'aini (glTF 2.0 binary)
+├── plugins/
+│   └── withTransparentAndroidSplashIcon.js # Menjaga launch bridge Android tetap #09473E tanpa ikon statis ganda
 ├── src/
-│   ├── components/            # IstiwaainiScene3D.tsx (loader & renderer 3D GLB)
-│   ├── constants/             # Tema warna, data modul & komponen Istiwa'aini
+│   ├── components/
+│   │   ├── IstiwaainiScene3D.tsx # Loader & renderer 3D GLB
+│   │   └── splash/               # Animated Celestial Fluid Motion splash (2.5s)
+│   ├── constants/                # Tema warna, data modul & komponen Istiwa'aini
 │   ├── features/
 │   │   ├── compass/           # CompassScreen.tsx (Kompas 2D, AR & Rumus Falak)
 │   │   ├── dashboard/         # DashboardScreen.tsx (Jam Istiwa' & Ringkasan)
@@ -119,8 +123,43 @@ npx expo run:android
 
 Atau menggunakan **EAS Build**:
 ```bash
+# Development build
 eas build --platform android --profile development
+
+# Internal preview APK (termasuk native splash bridge & expo-updates)
+eas build --platform android --profile preview
 ```
+
+---
+
+## EAS Update (OTA) & Kebijakan Rilis
+
+Aplikasi menggunakan `expo-updates` (`runtimeVersion.policy: "appVersion"`, `checkAutomatically: "ON_LOAD"`, `fallbackToCacheTimeout: 0`, `useEmbeddedUpdate: true`) sehingga app langsung terbuka memakai bundle lokal/cache (tetap bekerja offline) dan mengunduh pembaruan JS/aset secara asynchronous untuk diterapkan pada peluncuran berikutnya.
+
+### Pemetaan Channel & Build Profile (`eas.json`)
+- `development` → channel `development` (`developmentClient: true`, distribusi internal)
+- `preview` → channel `preview` (distribusi internal APK)
+- `production` → channel `production` (`autoIncrement: true`)
+
+### Perintah Publikasi OTA Update
+
+**Preview channel (pengujian internal):**
+```bash
+eas update --channel preview --message "Update description" --environment preview
+```
+
+**Production channel (rilis pengguna):**
+```bash
+eas update --channel production --message "Update description" --environment production
+```
+
+### Batasan OTA Update vs Build Native Baru
+- **Bisa lewat OTA (`eas update`):** perubahan kode JavaScript/TypeScript, perbaikan UI/logika, dan aset terbundel yang kompatibel dengan native runtime terpasang.
+- **Wajib Build Native Baru (`eas build`):** menambah/mengubah dependensi native, izin Android/iOS, `AndroidManifest`, konfigurasi native splash, upgrade Expo SDK / React Native, atau perubahan integrasi native lainnya.
+- Jangan ubah `runtimeVersion` untuk update JS biasa. Saat ada perubahan native, naikkan `expo.version` pada `app.json` (karena memakai policy `appVersion`) lalu buat build APK/AAB baru.
+
+### Kebijakan Pengembangan Lanjutan
+Utamakan pemakaian ulang pustaka yang sudah terpasang (`react-native-reanimated`, `react-native-svg`, `zustand`, `@react-navigation/*`, `three`, serta modul Expo untuk GPS, audio, sensor, kamera, dan notifikasi) sebelum menambah dependensi baru.
 
 ---
 

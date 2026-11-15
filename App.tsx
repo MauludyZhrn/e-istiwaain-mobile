@@ -1,10 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { FluidSplash } from './src/components/splash/FluidSplash';
+import { colors } from './src/constants/colors';
 import { useAppStore } from './src/store/useAppStore';
 import {
   ensureAdhanNotificationChannels,
@@ -13,8 +16,26 @@ import {
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
+SplashScreen.preventAutoHideAsync().catch(() => {});
+if (!isExpoGo) {
+  try {
+    SplashScreen.setOptions({ duration: 0, fade: false });
+  } catch {
+    // Ignore on platforms/runtimes where setOptions is unavailable
+  }
+}
+
 export default function App() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
+  const [showSplash, setShowSplash] = useState(true);
+
+  const handleSplashReady = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
 
   useEffect(() => {
     if (isExpoGo) return;
@@ -47,12 +68,18 @@ export default function App() {
     };
   }, []);
 
+  const rootBackground = isDarkMode ? colors.dark.background : colors.light.background;
+
   return (
-    <SafeAreaProvider>
-      <NavigationContainer theme={isDarkMode ? DarkTheme : DefaultTheme}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-        <RootNavigator />
-      </NavigationContainer>
+    <SafeAreaProvider style={{ backgroundColor: rootBackground }}>
+      <StatusBar style={showSplash || isDarkMode ? 'light' : 'dark'} />
+      {showSplash ? (
+        <FluidSplash onReady={handleSplashReady} onFinish={handleSplashFinish} />
+      ) : (
+        <NavigationContainer theme={isDarkMode ? DarkTheme : DefaultTheme}>
+          <RootNavigator />
+        </NavigationContainer>
+      )}
     </SafeAreaProvider>
   );
 }

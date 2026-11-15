@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -44,7 +39,27 @@
             "./assets/audio/adzan_biasa.mp3"
           ]
         }
+      ],
+      "./plugins/withTransparentAndroidSplashIcon.js",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#09473E",
+          "dark": {
+            "backgroundColor": "#09473E"
+          }
+        }
       ]
-    ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "useEmbeddedUpdate": true,
+      "url": "https://u.expo.dev/f258df95-d81f-4ffa-82b7-8d8382643d88"
+    }
   }
 }
