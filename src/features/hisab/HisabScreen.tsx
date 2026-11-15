@@ -8,12 +8,12 @@ import {
   TouchableOpacity,
   Switch,
   Modal,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MapPin, Calculator, Eye, BookOpen, Sun, RotateCw, CheckCircle2 } from 'lucide-react-native';
 
 import { useAppStore } from '../../store/useAppStore';
+import { showAppDialog } from '../../components/ui/AppDialog';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { calculateFullHisab, getDefaultTimezone, getTimeZoneLabel } from '../../utils/falakMath';
@@ -114,7 +114,12 @@ export const HisabScreen = () => {
   // Fungsi Eksekusi Perhitungan Falak
   const handleCalculate = () => {
     if (!day || !month || !year || !hour || !minute || !second || !zone || !latDeg || !lngDeg) {
-      Alert.alert('Data Belum Lengkap', 'Semua parameter wajib diisi!');
+      showAppDialog({
+        variant: 'warning',
+        title: 'Data Belum Lengkap',
+        message: 'Semua parameter tanggal, waktu, dan koordinat wajib diisi!',
+        confirmText: 'Periksa Lagi',
+      });
       return;
     }
 

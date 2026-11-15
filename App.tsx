@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { FluidSplash } from './src/components/splash/FluidSplash';
+import { AppDialogHost } from './src/components/ui/AppDialog';
 import { colors } from './src/constants/colors';
 import { useAppStore } from './src/store/useAppStore';
 import {
@@ -80,6 +81,7 @@ export default function App() {
           <RootNavigator />
         </NavigationContainer>
       )}
+      <AppDialogHost />
     </SafeAreaProvider>
   );
 }

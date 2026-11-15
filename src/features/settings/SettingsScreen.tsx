@@ -6,9 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
   Modal,
   Image,
+  Pressable,
 } from 'react-native';
 import {
   Moon,
@@ -21,10 +21,12 @@ import {
   ChevronRight,
   Smartphone,
   ShieldCheck,
+  Check,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppStore, AdhanSoundType } from '../../store/useAppStore';
+import { showAppDialog } from '../../components/ui/AppDialog';
 import { colors } from '../../constants/colors';
 import { CalculationMethod } from '../../utils/falakMath';
 import {
@@ -89,6 +91,7 @@ export const SettingsScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalOptions, setModalOptions] = useState<{ label: string; value: string }[]>([]);
+  const [modalSelectedValue, setModalSelectedValue] = useState<string>('');
   const [onSelectCallback, setOnSelectCallback] = useState<(val: any) => void>(() => {});
 
   const handleMethodSelect = () => {
@@ -99,6 +102,7 @@ export const SettingsScreen = () => {
       { label: 'Egyptian General Authority', value: 'Egyptian' },
       { label: 'Umm al-Qura (Makkah)', value: 'Umm al-Qura' },
     ]);
+    setModalSelectedValue(calculationMethod);
     setOnSelectCallback(() => (val: string) => setCalculationMethod(val as CalculationMethod));
     setModalVisible(true);
   };
@@ -111,6 +115,7 @@ export const SettingsScreen = () => {
       { label: 'Adzan Subuh (adzan_subuh.mp3)', value: 'subuh' },
       { label: 'Senyap / Tanpa Suara (Silent)', value: 'silent' },
     ]);
+    setModalSelectedValue(adhanSound);
     setOnSelectCallback(() => (val: string) => setAdhanSound(val as AdhanSoundType));
     setModalVisible(true);
   };
@@ -299,7 +304,15 @@ export const SettingsScreen = () => {
 
           <TouchableOpacity
             style={styles.row}
-            onPress={() => Alert.alert('Privasi', 'Aplikasi ini menjaga data lokasi tetap di perangkat Anda.')}
+            onPress={() =>
+              showAppDialog({
+                variant: 'info',
+                icon: 'shield',
+                title: 'Privasi & Keamanan',
+                message: 'Aplikasi ini menjaga data lokasi tetap tersimpan lokal di perangkat Anda.',
+                confirmText: 'Mengerti',
+              })
+            }
           >
             <View style={styles.rowLeft}>
               <ShieldCheck color={theme.iconi} size={20} />
@@ -321,31 +334,86 @@ export const SettingsScreen = () => {
         </View>
       </ScrollView>
 
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
-          <View style={[styles.modalContainer, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>{modalTitle}</Text>
+      <Modal
+        visible={modalVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} />
+          <View
+            style={[
+              styles.modalContainer,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
+            <View style={[styles.modalTopBar, { backgroundColor: theme.accent }]} />
+            <View style={styles.modalBody}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>{modalTitle}</Text>
 
-            <ScrollView style={{ maxHeight: 300 }}>
-              {modalOptions.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.modalItem, { borderBottomColor: theme.border }]}
-                  onPress={() => {
-                    onSelectCallback(item.value);
-                    setModalVisible(false);
-                  }}
-                >
-                  <Text style={[styles.modalItemText, { color: theme.textPrimary }]}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                {modalOptions.map((item, index) => {
+                  const isSelected = item.value === modalSelectedValue;
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      activeOpacity={0.8}
+                      style={[
+                        styles.modalItem,
+                        {
+                          borderColor: isSelected ? theme.primary : theme.border,
+                          backgroundColor: isSelected
+                            ? isDarkMode
+                              ? 'rgba(27, 44, 193, 0.2)'
+                              : 'rgba(11, 79, 55, 0.08)'
+                            : 'transparent',
+                        },
+                      ]}
+                      onPress={() => {
+                        onSelectCallback(item.value);
+                        setModalVisible(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.modalItemText,
+                          {
+                            color: isSelected
+                              ? isDarkMode
+                                ? '#F8FAFC'
+                                : theme.primary
+                              : theme.textPrimary,
+                            fontWeight: isSelected ? '700' : '500',
+                          },
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                      {isSelected && (
+                        <Check
+                          size={18}
+                          color={isDarkMode ? theme.accent : theme.primary}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
 
-            <TouchableOpacity style={styles.closeButton} onPress={() => setModalVisible(false)}>
-              <Text style={{ color: theme.accent, fontWeight: 'bold' }}>Batal</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.82}
+                style={[styles.closeButton, { borderColor: theme.border }]}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={{ color: theme.textSecondary, fontWeight: '700', fontSize: 14 }}>
+                  Batal
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );
@@ -417,30 +485,52 @@ const styles = StyleSheet.create({
   footerText: { textAlign: 'center', fontSize: 12 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(1, 7, 54, 0.62)',
     justifyContent: 'center',
-    padding: 20,
+    padding: 24,
   },
   modalContainer: {
-    borderRadius: 16,
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: 'hidden',
+    elevation: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  modalTopBar: {
+    height: 4,
+    width: '100%',
+  },
+  modalBody: {
     padding: 20,
-    elevation: 5,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 16,
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 14,
   },
   modalItem: {
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+    gap: 10,
   },
   modalItemText: {
     fontSize: 14,
+    flex: 1,
   },
   closeButton: {
-    marginTop: 16,
+    marginTop: 8,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
   },
 });

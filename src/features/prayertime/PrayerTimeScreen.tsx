@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Platform,
 } from 'react-native';
 import {
@@ -37,6 +36,7 @@ import {
   AzanPlaybackState,
 } from '../../services/soundService';
 import { useAppStore } from '../../store/useAppStore';
+import { showAppDialog } from '../../components/ui/AppDialog';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { toDMS } from '../../utils/falakMath';
@@ -208,20 +208,27 @@ export const PrayerTimeScreen = () => {
       return;
     }
     if (adhanSound === 'silent') {
-      Alert.alert(
-        'Mode Senyap Aktif',
-        'Suara azan disetel ke Senyap (Silent). Buka menu Pengaturan jika ingin mengaktifkan suara.'
-      );
+      showAppDialog({
+        variant: 'warning',
+        icon: 'volume-x',
+        title: 'Mode Senyap Aktif',
+        message:
+          'Suara azan disetel ke Senyap (Silent). Buka menu Pengaturan jika ingin mengaktifkan suara.',
+        confirmText: 'Mengerti',
+      });
       return;
     }
     const keyToPlay =
       prayerKey === 'imsak' || prayerKey === 'terbit' ? 'subuh' : prayerKey;
     const ok = await playAzanSound(keyToPlay, undefined, adhanSound);
     if (!ok) {
-      Alert.alert(
-        'Info Audio Adzan',
-        'Pastikan izin audio aktif dan aplikasi dijalankan melalui Development Build.'
-      );
+      showAppDialog({
+        variant: 'warning',
+        title: 'Info Audio Adzan',
+        message:
+          'Pastikan izin audio aktif dan aplikasi dijalankan melalui Development Build.',
+        confirmText: 'Mengerti',
+      });
     }
   };
 
@@ -347,10 +354,13 @@ export const PrayerTimeScreen = () => {
 
     if (newStatus) {
       if (isExpoGo) {
-        Alert.alert(
-          'Mode Expo Go Detected',
-          'Fitur notifikasi lokal terjadwal membutuhkan Development Build (APK). Jalankan build mandiri untuk menguji alarm notifikasi di perangkat.'
-        );
+        showAppDialog({
+          variant: 'warning',
+          title: 'Mode Expo Go Terdeteksi',
+          message:
+            'Fitur notifikasi lokal terjadwal membutuhkan Development Build (APK). Jalankan build mandiri untuk menguji alarm notifikasi di perangkat.',
+          confirmText: 'Mengerti',
+        });
         return;
       }
 
@@ -367,16 +377,31 @@ export const PrayerTimeScreen = () => {
             : prayerKey === 'subuh' && adhanSound !== 'biasa'
             ? 'Audio: Adzan Subuh'
             : 'Audio: Adzan Standar';
-        Alert.alert(
-          'Alarm Adzan Aktif',
-          `Pengingat waktu ${prayerName} (${todayTimes[prayerKey as keyof typeof todayTimes]}) berhasil dijadwalkan (${audioInfo}).`
-        );
+        showAppDialog({
+          variant: 'success',
+          icon: 'bell',
+          title: 'Alarm Adzan Aktif',
+          message: `Pengingat waktu ${prayerName} (${todayTimes[prayerKey as keyof typeof todayTimes]}) berhasil dijadwalkan (${audioInfo}).`,
+          confirmText: 'Siap',
+        });
       } else {
-        Alert.alert('Izin Ditolak', 'Aktifkan izin notifikasi di pengaturan HP.');
+        showAppDialog({
+          variant: 'danger',
+          icon: 'bell-off',
+          title: 'Izin Notifikasi Ditolak',
+          message: 'Aktifkan izin notifikasi di pengaturan HP agar alarm adzan dapat berbunyi.',
+          confirmText: 'Mengerti',
+        });
       }
     } else {
       await syncPrayerNotifications(todayTimes, nextAlarms, notificationsEnabled, adhanSound);
-      Alert.alert('Alarm Dimatikan', `Pengingat waktu ${prayerName} dinonaktifkan.`);
+      showAppDialog({
+        variant: 'info',
+        icon: 'bell-off',
+        title: 'Alarm Dimatikan',
+        message: `Pengingat waktu ${prayerName} dinonaktifkan.`,
+        confirmText: 'OK',
+      });
     }
   };
 
