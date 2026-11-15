@@ -18,7 +18,7 @@ export const colors = {
     surface: '#0D1C42',
     iconi: '#F8FAFC',
     iconiSecondary: '#444645',
-    primary: ' #1B2CC1',
+    primary: '#1B2CC1',
     accent: '#F59E0B',
     textPrimary: '#F8FAFC',
     textSecondary: '#94A3B8',

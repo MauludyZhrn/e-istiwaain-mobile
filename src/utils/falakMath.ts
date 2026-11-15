@@ -85,13 +85,18 @@ export const getTimeZoneLabel = (tz: number = getDefaultTimezone()): string => {
  */
 export const toDMS = (deg: number): string => {
   const absolute = Math.abs(deg);
-  const degrees = Math.floor(absolute);
+  let degrees = Math.floor(absolute);
   const minutesNotTruncated = (absolute - degrees) * 60;
-  const minutes = Math.floor(minutesNotTruncated);
-  const seconds = Math.round((minutesNotTruncated - minutes) * 60);
+  let minutes = Math.floor(minutesNotTruncated);
+  let seconds = Math.round((minutesNotTruncated - minutes) * 60);
 
   if (seconds === 60) {
-    return `${degrees}° ${minutes + 1}' 00"`;
+    seconds = 0;
+    minutes += 1;
+  }
+  if (minutes === 60) {
+    minutes = 0;
+    degrees += 1;
   }
 
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
@@ -102,16 +107,22 @@ export const toDMS = (deg: number): string => {
  * Konversi Jam Desimal ke Format HH:MM:SS
  */
 export const decimalToTime = (decimalHours: number): string => {
-  let norm = (decimalHours + 24) % 24;
-  const h = Math.floor(norm);
+  let norm = ((decimalHours % 24) + 24) % 24;
+  let h = Math.floor(norm);
   const mNotTruncated = (norm - h) * 60;
-  const m = Math.floor(mNotTruncated);
-  const s = Math.round((mNotTruncated - m) * 60);
+  let m = Math.floor(mNotTruncated);
+  let s = Math.round((mNotTruncated - m) * 60);
+
+  if (s === 60) {
+    s = 0;
+    m += 1;
+  }
+  if (m === 60) {
+    m = 0;
+    h = (h + 1) % 24;
+  }
 
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-  if (s === 60) {
-    return `${pad(h)}:${pad(m + 1)}:00`;
-  }
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 };
 
@@ -235,6 +246,160 @@ export const calculateQiblaAzimuth = (userLat: number, userLng: number): number 
   return (qiblaDeg + 360) % 360;
 };
 
+/**
+ * Menghitung Jarak Geodesik Lingkaran Besar (Great Circle Distance) ke Ka'bah dalam km
+ */
+export const calculateGreatCircleDistance = (
+  lat1: number,
+  lng1: number,
+  lat2: number = KABA_COORDS.latitude,
+  lng2: number = KABA_COORDS.longitude
+): number => {
+  const R = 6371; // Radius rata-rata bumi (km)
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+};
+
+/**
+ * Mendapatkan Label Arah Mata Angin dari Nilai Derajat Azimuth
+ */
+export const getCardinalDirection = (deg: number): string => {
+  const normalized = ((deg % 360) + 360) % 360;
+  const directions = [
+    { label: 'Utara (U)', min: 348.75, max: 11.25 },
+    { label: 'Utara-Timur Laut (UTL)', min: 11.25, max: 33.75 },
+    { label: 'Timur Laut (TL)', min: 33.75, max: 56.25 },
+    { label: 'Timur-Timur Laut (TTL)', min: 56.25, max: 78.75 },
+    { label: 'Timur (T)', min: 78.75, max: 101.25 },
+    { label: 'Timur-Menenggara (TMG)', min: 101.25, max: 123.75 },
+    { label: 'Tenggara (TG)', min: 123.75, max: 146.25 },
+    { label: 'Selatan-Menenggara (SMG)', min: 146.25, max: 168.75 },
+    { label: 'Selatan (S)', min: 168.75, max: 191.25 },
+    { label: 'Selatan-Barat Daya (SBD)', min: 191.25, max: 213.75 },
+    { label: 'Barat Daya (BD)', min: 213.75, max: 236.25 },
+    { label: 'Barat-Barat Daya (BBD)', min: 236.25, max: 258.75 },
+    { label: 'Barat (B)', min: 258.75, max: 281.25 },
+    { label: 'Barat-Barat Laut (BBL)', min: 281.25, max: 303.75 },
+    { label: 'Barat Laut (BL)', min: 303.75, max: 326.25 },
+    { label: 'Utara-Barat Laut (UBL)', min: 326.25, max: 348.75 },
+  ];
+  if (normalized >= 348.75 || normalized < 11.25) return 'Utara (U)';
+  const match = directions.find((d) => normalized >= d.min && normalized < d.max);
+  return match ? match.label : 'Utara (U)';
+};
+
+export interface QiblaCalculationDetail {
+  userLat: number;
+  userLng: number;
+  userLatDMS: string;
+  userLngDMS: string;
+  kabaLat: number;
+  kabaLng: number;
+  kabaLatDMS: string;
+  kabaLngDMS: string;
+  deltaLambda: number;
+  deltaLambdaDMS: string;
+  qiblaAzimuth: number;
+  qiblaAzimuthDMS: string;
+  sbmd: number;
+  sbmdDMS: string;
+  ubAngle: number;
+  ubAngleDMS: string;
+  cardinalDirection: string;
+  distanceKm: number;
+  formulaValues: {
+    sinDeltaLambda: number;
+    cosPhi: number;
+    tanPhiK: number;
+    sinPhi: number;
+    cosDeltaLambda: number;
+    numerator: number;
+    denominator: number;
+    cotB: number;
+    angleB: number;
+  };
+}
+
+/**
+ * Menghitung Rincian Lengkap Hisab Falak Arah Kiblat untuk Keperluan Analisis & Edukasi
+ */
+export const calculateQiblaDetails = (
+  userLat: number,
+  userLng: number
+): QiblaCalculationDetail => {
+  const phi = toRadians(userLat);
+  const phiK = toRadians(KABA_COORDS.latitude);
+  const dL_KabaMinusUser = toRadians(KABA_COORDS.longitude - userLng);
+  const dL_UserMinusKaba = toRadians(userLng - KABA_COORDS.longitude);
+
+  const sinDeltaLambda = Math.sin(dL_KabaMinusUser);
+  const cosPhi = Math.cos(phi);
+  const tanPhiK = Math.tan(phiK);
+  const sinPhi = Math.sin(phi);
+  const cosDeltaLambda = Math.cos(dL_KabaMinusUser);
+
+  const numerator = sinDeltaLambda;
+  const denominator = cosPhi * tanPhiK - sinPhi * cosDeltaLambda;
+
+  const qiblaRad = Math.atan2(numerator, denominator);
+  const qiblaAzimuth = (toDegrees(qiblaRad) + 360) % 360;
+
+  // Rumus Falak Klasik Cotangent B (Kitab Kuning)
+  const dLAbs = Math.abs(dL_UserMinusKaba);
+  let cotB = 0;
+  let angleB = 0;
+  if (Math.sin(dLAbs) !== 0) {
+    cotB = (cosPhi * tanPhiK) / Math.sin(dLAbs) - sinPhi / Math.tan(dLAbs);
+    angleB = toDegrees(Math.atan(1 / cotB));
+  }
+
+  const sbmd = Math.abs(270 - qiblaAzimuth);
+  const ubAngle = (360 - qiblaAzimuth) % 360;
+  const deltaLambda = Math.abs(userLng - KABA_COORDS.longitude);
+  const distanceKm = calculateGreatCircleDistance(userLat, userLng);
+
+  return {
+    userLat,
+    userLng,
+    userLatDMS: `${toDMS(Math.abs(userLat))} ${userLat < 0 ? 'LS' : 'LU'}`,
+    userLngDMS: `${toDMS(Math.abs(userLng))} ${userLng < 0 ? 'BB' : 'BT'}`,
+    kabaLat: KABA_COORDS.latitude,
+    kabaLng: KABA_COORDS.longitude,
+    kabaLatDMS: `${toDMS(KABA_COORDS.latitude)} LU`,
+    kabaLngDMS: `${toDMS(KABA_COORDS.longitude)} BT`,
+    deltaLambda,
+    deltaLambdaDMS: toDMS(deltaLambda),
+    qiblaAzimuth,
+    qiblaAzimuthDMS: toDMS(qiblaAzimuth),
+    sbmd,
+    sbmdDMS: toDMS(sbmd),
+    ubAngle,
+    ubAngleDMS: toDMS(ubAngle),
+    cardinalDirection: getCardinalDirection(qiblaAzimuth),
+    distanceKm,
+    formulaValues: {
+      sinDeltaLambda,
+      cosPhi,
+      tanPhiK,
+      sinPhi,
+      cosDeltaLambda,
+      numerator,
+      denominator,
+      cotB,
+      angleB,
+    },
+  };
+};
+
+
 // ============================================================================
 // ENGINE MATAHARI & RASHDUL QIBLAT (HISAB FALAK LENGKAP)
 // ============================================================================
@@ -299,10 +464,12 @@ export const calculateFullHisab = (params: {
   const sinH =
     Math.sin(phiRad) * Math.sin(decRad) +
     Math.cos(phiRad) * Math.cos(decRad) * Math.cos(tSunRad);
-  const hRad = Math.asin(sinH);
+  const clampedSinH = Math.max(-1, Math.min(1, sinH));
+  const hRad = Math.asin(clampedSinH);
+  const hDeg = toDegrees(hRad);
 
   const cosAz =
-    (Math.sin(decRad) - Math.sin(phiRad) * sinH) /
+    (Math.sin(decRad) - Math.sin(phiRad) * clampedSinH) /
     (Math.cos(phiRad) * Math.cos(hRad));
 
   let azSunDeg = toDegrees(Math.acos(Math.max(-1, Math.min(1, cosAz))));
@@ -335,6 +502,12 @@ export const calculateFullHisab = (params: {
 
   const tzLabel = getTimeZoneLabel(params.zone);
 
+  // Beda Azimut (BA) = Azimut Kiblat - Azimut Matahari (konsep alat Istiwa'aini)
+  const bedaAzimuthNum = ((qiblaAzimuthNum - azSunDeg) % 360 + 360) % 360;
+  const isSunAboveHorizon = hDeg > 0.1;
+  const shadowLengthNum = isSunAboveHorizon ? 15 / Math.tan(hRad) : 0;
+  const shadowLengthText = isSunAboveHorizon ? `${shadowLengthNum.toFixed(2)} cm` : 'Di bawah ufuk';
+
   return {
     declination: toDMS(ephem.declination),
     latPlace: `${toDMS(Math.abs(latVal))} ${latVal < 0 ? 'LS' : 'LU'}`,
@@ -347,9 +520,18 @@ export const calculateFullHisab = (params: {
 
     qiblaDirection: qiblaDirectionDMS,
     qiblaAzimuth: toDMS(qiblaAzimuthNum),
+    qiblaAzimuthNum,
     sunHourAngle: toDMS(Math.abs(tSunDeg)),
     sunDirection: toDMS(azSunDeg),
     sunAzimuth: toDMS(azSunDeg),
+    sunAzimuthNum: azSunDeg,
+    sunAltitude: toDMS(hDeg),
+    sunAltitudeNum: hDeg,
+    bedaAzimuth: toDMS(bedaAzimuthNum),
+    bedaAzimuthNum,
+    isSunAboveHorizon,
+    shadowLength: shadowLengthText,
+    shadowLengthNum,
     sunSetHourAngle: toDMS(tSetDeg),
     bdgSdtWktSbt: toDMS(Math.abs(90 - tSetDeg)),
 

@@ -10,16 +10,16 @@ import {
   Modal,
   Alert,
 } from 'react-native';
-import { SafeAreaView} from 'react-native-safe-area-context';
-import { MapPin, Calculator } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MapPin, Calculator, Eye, BookOpen, Sun, RotateCw, CheckCircle2 } from 'lucide-react-native';
 
 import { useAppStore } from '../../store/useAppStore';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { calculateFullHisab, getDefaultTimezone, getTimeZoneLabel } from '../../utils/falakMath';
+import { IstiwaainiScene3D } from '../../components/IstiwaainiScene3D';
 
 export const HisabScreen = () => {
-  
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const theme = isDarkMode ? colors.dark : colors.light;
   const { location } = useLocation();
@@ -36,7 +36,6 @@ export const HisabScreen = () => {
   const [second, setSecond] = useState(now.getSeconds().toString());
   const [zone, setZone] = useState(getDefaultTimezone().toString());
 
-
   // Input Parameter Lintang & Bujur (DMS)
   const [latDeg, setLatDeg] = useState('');
   const [latMin, setLatMin] = useState('');
@@ -51,16 +50,27 @@ export const HisabScreen = () => {
   // State Hasil Kalkulasi
   const [results, setResults] = useState<any>(null);
   const [showIllustration, setShowIllustration] = useState(false);
+  const [modalTab, setModalTab] = useState<'3d' | 'guide'>('3d');
+  const [replayKey, setReplayKey] = useState(0);
 
   // Handler Switch GPS
   useEffect(() => {
     if (useGps && location) {
       // Hitung Lintang
       const absLat = Math.abs(location.latitude);
-      const lDeg = Math.floor(absLat);
+      let lDeg = Math.floor(absLat);
       const lMinNot = (absLat - lDeg) * 60;
-      const lMin = Math.floor(lMinNot);
-      const lSec = Math.round((lMinNot - lMin) * 60);
+      let lMin = Math.floor(lMinNot);
+      let lSec = Math.round((lMinNot - lMin) * 60);
+
+      if (lSec === 60) {
+        lSec = 0;
+        lMin += 1;
+      }
+      if (lMin === 60) {
+        lMin = 0;
+        lDeg += 1;
+      }
 
       setLatDeg(lDeg.toString());
       setLatMin(lMin.toString());
@@ -69,17 +79,25 @@ export const HisabScreen = () => {
 
       // Hitung Bujur
       const absLng = Math.abs(location.longitude);
-      const gDeg = Math.floor(absLng);
+      let gDeg = Math.floor(absLng);
       const gMinNot = (absLng - gDeg) * 60;
-      const gMin = Math.floor(gMinNot);
-      const gSec = Math.round((gMinNot - gMin) * 60);
+      let gMin = Math.floor(gMinNot);
+      let gSec = Math.round((gMinNot - gMin) * 60);
+
+      if (gSec === 60) {
+        gSec = 0;
+        gMin += 1;
+      }
+      if (gMin === 60) {
+        gMin = 0;
+        gDeg += 1;
+      }
 
       setLngDeg(gDeg.toString());
       setLngMin(gMin.toString());
       setLngSec(gSec.toString());
       setLngDir(location.longitude >= 0 ? 'T' : 'B');
     } else if (!useGps) {
-      // Reset input koordinat saat switch dimatikan
       setLatDeg('');
       setLatMin('');
       setLatSec('');
@@ -87,9 +105,8 @@ export const HisabScreen = () => {
       setLngMin('');
       setLngSec('');
     }
-  }, [useGps, location]); // Berjalan tiap kali useGps atau location berubah
+  }, [useGps, location]);
 
-  // Handler Switch cukup ubah state useGps saja
   const handleGpsToggle = (value: boolean) => {
     setUseGps(value);
   };
@@ -109,13 +126,13 @@ export const HisabScreen = () => {
       minute: parseInt(minute),
       second: parseInt(second),
       zone: parseFloat(zone),
-      latDeg: parseFloat(latDeg),
-      latMin: parseFloat(latMin),
-      latSec: parseFloat(latSec),
+      latDeg: parseFloat(latDeg) || 0,
+      latMin: parseFloat(latMin) || 0,
+      latSec: parseFloat(latSec) || 0,
       latDir: latDir,
-      lngDeg: parseFloat(lngDeg),
-      lngMin: parseFloat(lngMin),
-      lngSec: parseFloat(lngSec),
+      lngDeg: parseFloat(lngDeg) || 0,
+      lngMin: parseFloat(lngMin) || 0,
+      lngSec: parseFloat(lngSec) || 0,
       lngDir: lngDir,
     });
 
@@ -141,41 +158,48 @@ export const HisabScreen = () => {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-      <ScrollView contentContainerStyle={
-        styles.scrollContent}>
-        <Text style={[styles.title, { color: theme.textPrimary }]}>Hisab Istiwa'aini</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header Title */}
+        <Text style={[styles.title, { color: theme.textPrimary }]}>
+          Hisab Istiwa'ani
+        </Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          Masukkan parameter untuk perhitungan
+          Kalkulasi Akurasi Tinggi Arah Kiblat & Posisi Matahari
         </Text>
 
-        {/* Switch Lokasi GPS */}
+        {/* Toggle Gunakan GPS */}
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.rowBetween}>
             <View style={styles.row}>
               <MapPin color={theme.accent} size={20} />
               <Text style={[styles.toggleLabel, { color: theme.textPrimary }]}>
-                Gunakan Lokasi Saat ini
+                Gunakan Koordinat GPS Saat Ini
               </Text>
             </View>
-            <Switch 
-              value={useGps} 
-              onValueChange={handleGpsToggle} 
-              trackColor={{ false: theme.border, true: theme.border }}
-              thumbColor={useGps ? theme.accent : theme.surface}
-              />
+            <Switch
+              value={useGps}
+              onValueChange={handleGpsToggle}
+              trackColor={{ false: '#334155', true: '#10B981' }}
+              thumbColor="#FFFFFF"
+            />
           </View>
         </View>
 
-        {/* Form Tanggal & Waktu */}
+        {/* Form Waktu & Tanggal */}
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>TANGGAL & WAKTU</Text>
+          <Text style={[styles.sectionHeader, { color: theme.textPrimary }]}>PARAMETER WAKTU</Text>
+          
           <View style={styles.rowInputs}>
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Tgl" placeholderTextColor={theme.textSecondary} value={day} onChangeText={setDay} keyboardType="numeric" />
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Bln" placeholderTextColor={theme.textSecondary} value={month} onChangeText={setMonth} keyboardType="numeric" />
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Thn" placeholderTextColor={theme.textSecondary} value={year} onChangeText={setYear} keyboardType="numeric" />
-          </View>
-          <View style={styles.rowInputs}>
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Zona" placeholderTextColor={theme.textSecondary} value={zone} onChangeText={setZone} keyboardType="numeric" />
+          </View>
+
+          <View style={styles.rowInputs}>
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Jam" placeholderTextColor={theme.textSecondary} value={hour} onChangeText={setHour} keyboardType="numeric" />
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Mnt" placeholderTextColor={theme.textSecondary} value={minute} onChangeText={setMinute} keyboardType="numeric" />
             <TextInput style={[styles.input, { color: theme.textPrimary, borderColor: theme.border }]} placeholder="Dtk" placeholderTextColor={theme.textSecondary} value={second} onChangeText={setSecond} keyboardType="numeric" />
@@ -231,12 +255,15 @@ export const HisabScreen = () => {
               Hasil Kalkulasi
             </Text>
 
-            {/* TOMBOL ILUSTRASI VISUAL */}
+            {/* TOMBOL ILUSTRASI VISUAL & CARA KERJA ALAT */}
             <TouchableOpacity
               style={styles.btnIllustration}
-              onPress={() => setShowIllustration(true)}
+              onPress={() => {
+                setModalTab('3d');
+                setShowIllustration(true);
+              }}
             >
-              <Text style={styles.btnIllustrationText}>🗺️ Lihat Ilustrasi Visual Arah</Text>
+              <Text style={styles.btnIllustrationText}>☀️ Ilustrasi Alat Istiwa'aini & Cara Pakai</Text>
             </TouchableOpacity>
 
             {/* CARD 1: PARAMETER KALKULASI UTAMA */}
@@ -282,7 +309,7 @@ export const HisabScreen = () => {
                 <Text style={[styles.resVal, { color: theme.textPrimary }]}>{results.qiblaDirection}</Text>
               </View>
               <View style={styles.resultRow}>
-                <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Azm. Qiblat</Text>
+                <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Azm. Qiblat (AK)</Text>
                 <Text style={[styles.resVal, { color: theme.textPrimary }]}>{results.qiblaAzimuth}</Text>
               </View>
               <View style={styles.resultRow}>
@@ -294,8 +321,20 @@ export const HisabScreen = () => {
                 <Text style={[styles.resVal, { color: theme.textPrimary }]}>{results.sunDirection}</Text>
               </View>
               <View style={styles.resultRow}>
-                <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Azm. Matahari</Text>
+                <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Azm. Matahari (AM)</Text>
                 <Text style={[styles.resVal, { color: theme.textPrimary }]}>{results.sunAzimuth}</Text>
+              </View>
+              <View style={styles.resultRow}>
+                <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Tinggi Mthr (Irtafa')</Text>
+                <Text style={[styles.resVal, { color: theme.textPrimary }]}>{results.sunAltitude}</Text>
+              </View>
+              <View style={[styles.resultRow, { backgroundColor: 'rgba(245, 158, 11, 0.08)', paddingHorizontal: 6, borderRadius: 6 }]}>
+                <Text style={[styles.resLabel, { color: '#F59E0B', fontWeight: 'bold' }]}>Beda Azimut (BA = AK - AM)</Text>
+                <Text style={[styles.resVal, { color: '#F59E0B', fontWeight: 'bold' }]}>{results.bedaAzimuth}</Text>
+              </View>
+              <View style={styles.resultRow}>
+                <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Pjg. Bayangan (15cm)</Text>
+                <Text style={[styles.resVal, { color: theme.textPrimary }]}>{results.shadowLength}</Text>
               </View>
               <View style={styles.resultRow}>
                 <Text style={[styles.resLabel, { color: theme.textSecondary }]}>Sdt. Wkt. Sbt Mthr</Text>
@@ -322,7 +361,7 @@ export const HisabScreen = () => {
               </View>
             </View>
 
-            {/* POP-UP MODAL ILUSTRASI */}
+            {/* POP-UP MODAL ILUSTRASI & CARA KERJA ALAT */}
             <Modal
               visible={showIllustration}
               transparent
@@ -331,70 +370,179 @@ export const HisabScreen = () => {
             >
               <View style={styles.modalOverlay}>
                 <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
-                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
-                    Ilustrasi Arah Azimuth
-                  </Text>
-                  <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-                    Visualisasi Posisi Kiblat & Matahari dari Utara (0°)
-                  </Text>
-
-                  {/* KOMPAS VISUAL */}
-                  <View style={styles.compassCircle}>
-                    <Text style={[styles.cardinalText, { top: 6 }]}>U (0°)</Text>
-                    <Text style={[styles.cardinalText, { right: 8 }]}>T (90°)</Text>
-                    <Text style={[styles.cardinalText, { bottom: 6 }]}>S (180°)</Text>
-                    <Text style={[styles.cardinalText, { left: 8 }]}>B (270°)</Text>
-
-                    {/* Jarum Kiblat */}
-                    <View
+                  {/* Segmented Control Switcher */}
+                  <View style={styles.segmentContainer}>
+                    <TouchableOpacity
                       style={[
-                        styles.needleContainer,
-                        { transform: [{ rotate: `${parseFloat(results.qiblaAzimuth) || 0}deg` }] },
+                        styles.segmentBtn,
+                        modalTab === '3d' && styles.segmentBtnActive,
                       ]}
+                      onPress={() => setModalTab('3d')}
                     >
-                      <View style={[styles.needlePointer, { backgroundColor: '#10B981' }]} />
-                      <View style={styles.qiblaBadge}>
-                        <Text style={styles.badgeText}>🕋 Kiblat</Text>
-                      </View>
-                    </View>
+                      <Eye size={14} color={modalTab === '3d' ? '#FFFFFF' : theme.textSecondary} />
+                      <Text
+                        style={[
+                          styles.segmentText,
+                          modalTab === '3d' ? styles.segmentTextActive : { color: theme.textSecondary },
+                        ]}
+                      >
+                        Simulasi 3D
+                      </Text>
+                    </TouchableOpacity>
 
-                    {/* Jarum Matahari */}
-                    <View
+                    <TouchableOpacity
                       style={[
-                        styles.needleContainer,
-                        { transform: [{ rotate: `${parseFloat(results.sunAzimuth) || 0}deg` }] },
+                        styles.segmentBtn,
+                        modalTab === 'guide' && styles.segmentBtnActive,
                       ]}
+                      onPress={() => setModalTab('guide')}
                     >
-                      <View style={[styles.needlePointer, { backgroundColor: '#F59E0B' }]} />
-                      <View style={styles.sunBadge}>
-                        <Text style={styles.badgeText}>☀️ Mthr</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.centerDot} />
+                      <BookOpen size={14} color={modalTab === 'guide' ? '#FFFFFF' : theme.textSecondary} />
+                      <Text
+                        style={[
+                          styles.segmentText,
+                          modalTab === 'guide' ? styles.segmentTextActive : { color: theme.textSecondary },
+                        ]}
+                      >
+                        SOP Cara Pakai
+                      </Text>
+                    </TouchableOpacity>
                   </View>
 
-                  {/* KETERANGAN / LEGEND */}
-                  <View style={styles.legendContainer}>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.dotLegend, { backgroundColor: '#10B981' }]} />
-                      <Text style={[styles.legendText, { color: theme.textPrimary }]}>
-                        Azm. Kiblat: <Text style={{ fontWeight: 'bold' }}>{results.qiblaAzimuth}</Text>
+                  {modalTab === '3d' ? (
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
+                      <Text style={[styles.modalTitle, { color: theme.textPrimary, marginTop: 4 }]}>
+                        Ilustrasi Alat Istiwa'aini 3D
                       </Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.dotLegend, { backgroundColor: '#F59E0B' }]} />
-                      <Text style={[styles.legendText, { color: theme.textPrimary }]}>
-                        Azm. Matahari: <Text style={{ fontWeight: 'bold' }}>{results.sunAzimuth}</Text>
+                      <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                        Simulasi Sinar Matahari, Bayangan Ganda & Penarikan Garis Kiblat
                       </Text>
-                    </View>
-                  </View>
+
+                      <IstiwaainiScene3D
+                        qiblaAzimuth={results.qiblaAzimuthNum ?? (parseFloat(results.qiblaAzimuth) || 0)}
+                        sunAzimuth={results.sunAzimuthNum ?? (parseFloat(results.sunAzimuth) || 0)}
+                        sunAltitude={results.sunAltitudeNum ?? 45}
+                        bedaAzimuth={results.bedaAzimuthNum ?? 0}
+                        replayKey={replayKey}
+                        size={305}
+                      />
+
+                      <TouchableOpacity
+                        onPress={() => setReplayKey((k) => k + 1)}
+                        style={styles.replayButton}
+                      >
+                        <RotateCw size={14} color="#10B981" />
+                        <Text style={{ color: '#10B981', fontWeight: 'bold', fontSize: 13 }}>
+                          Putar Ulang Animasi
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* DATA KUNCI CARA KERJA ALAT */}
+                      <View style={styles.dataBadgeGrid}>
+                        <View style={[styles.dataBadge, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}>
+                          <Text style={styles.dataBadgeLabel}>☀️ Matahari (AM)</Text>
+                          <Text style={[styles.dataBadgeVal, { color: '#F59E0B' }]}>{results.sunAzimuth}</Text>
+                          <Text style={styles.dataBadgeSub}>Tinggi: {results.sunAltitude}</Text>
+                        </View>
+                        <View style={[styles.dataBadge, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
+                          <Text style={styles.dataBadgeLabel}>🕋 Kiblat (AK)</Text>
+                          <Text style={[styles.dataBadgeVal, { color: '#10B981' }]}>{results.qiblaAzimuth}</Text>
+                          <Text style={styles.dataBadgeSub}>Arah: {results.qiblaDirection}</Text>
+                        </View>
+                        <View style={[styles.dataBadge, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                          <Text style={styles.dataBadgeLabel}>📐 Beda Azimut (BA)</Text>
+                          <Text style={[styles.dataBadgeVal, { color: '#3B82F6' }]}>{results.bedaAzimuth}</Text>
+                          <Text style={styles.dataBadgeSub}>Sudut Tarik Benang</Text>
+                        </View>
+                        <View style={[styles.dataBadge, { backgroundColor: 'rgba(148, 163, 184, 0.12)' }]}>
+                          <Text style={styles.dataBadgeLabel}>📏 Bayangan (H=15cm)</Text>
+                          <Text style={[styles.dataBadgeVal, { color: theme.textPrimary }]}>{results.shadowLength}</Text>
+                          <Text style={styles.dataBadgeSub}>Arah Lawan Mthr</Text>
+                        </View>
+                      </View>
+                    </ScrollView>
+                  ) : (
+                    <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                      <Text style={[styles.modalTitle, { color: theme.textPrimary, marginTop: 4 }]}>
+                        SOP Cara Penggunaan Alat Istiwa'aini
+                      </Text>
+                      <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                        Metode Penentuan Arah Kiblat karya Drs. KH. Slamet Hambali, M.Si
+                      </Text>
+
+                      {/* LANGKAH 1 */}
+                      <View style={[styles.sopStepCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                        <View style={styles.sopStepHeader}>
+                          <View style={[styles.sopBadge, { backgroundColor: '#38BDF8' }]}>
+                            <Text style={styles.sopBadgeText}>1</Text>
+                          </View>
+                          <Text style={[styles.sopStepTitle, { color: theme.textPrimary }]}>
+                            Penyetelan Datar (Leveling / Waterpass)
+                          </Text>
+                        </View>
+                        <Text style={[styles.sopStepDesc, { color: theme.textSecondary }]}>
+                          Letakkan instrumen Istiwa'aini di tempat terbuka yang terkena sinar matahari langsung. Putar 3 baut penyetel kaki hingga gelembung waterpass tepat berada di tengah lingkaran. Pastikan kedua tongkat (tongkat pusat & tongkat 0°) berdiri tegak lurus (90°).
+                        </Text>
+                      </View>
+
+                      {/* LANGKAH 2 */}
+                      <View style={[styles.sopStepCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                        <View style={styles.sopStepHeader}>
+                          <View style={[styles.sopBadge, { backgroundColor: '#F59E0B' }]}>
+                            <Text style={styles.sopBadgeText}>2</Text>
+                          </View>
+                          <Text style={[styles.sopStepTitle, { color: theme.textPrimary }]}>
+                            Siapkan Data Beda Azimut (BA)
+                          </Text>
+                        </View>
+                        <Text style={[styles.sopStepDesc, { color: theme.textSecondary }]}>
+                          Hitung selisih sudut antara Azimut Kiblat (AK) dan Azimut Matahari (AM) pada jam pengukuran:
+                        </Text>
+                        <View style={styles.formulaBox}>
+                          <Text style={styles.formulaTxt}>BA = AK - AM = {results.qiblaAzimuth} - {results.sunAzimuth} = {results.bedaAzimuth}</Text>
+                        </View>
+                      </View>
+
+                      {/* LANGKAH 3 */}
+                      <View style={[styles.sopStepCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                        <View style={styles.sopStepHeader}>
+                          <View style={[styles.sopBadge, { backgroundColor: '#DC2626' }]}>
+                            <Text style={styles.sopBadgeText}>3</Text>
+                          </View>
+                          <Text style={[styles.sopStepTitle, { color: theme.textPrimary }]}>
+                            Pembidikan Sinar Matahari (Titik 0°)
+                          </Text>
+                        </View>
+                        <Text style={[styles.sopStepDesc, { color: theme.textSecondary }]}>
+                          Arahkan atau putar piringan dial hingga tongkat yang berada di titik 0° lingkaran tepat menghadap ke arah datangnya matahari. Pembidikan dinyatakan tepat saat bayangan tongkat 0° jatuh memanjang lurus mengenai tongkat di titik pusat lingkaran dial.
+                        </Text>
+                      </View>
+
+                      {/* LANGKAH 4 */}
+                      <View style={[styles.sopStepCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                        <View style={styles.sopStepHeader}>
+                          <View style={[styles.sopBadge, { backgroundColor: '#10B981' }]}>
+                            <Text style={styles.sopBadgeText}>4</Text>
+                          </View>
+                          <Text style={[styles.sopStepTitle, { color: theme.textPrimary }]}>
+                            Penarikan Garis Arah Kiblat
+                          </Text>
+                        </View>
+                        <Text style={[styles.sopStepDesc, { color: theme.textSecondary }]}>
+                          Tarik seutas benang penunjuk dari <Text style={{ fontWeight: 'bold' }}>Tongkat Pusat</Text> ke angka derajat piringan dial sebesar nilai Beda Azimut (<Text style={{ color: '#10B981', fontWeight: 'bold' }}>{results.bedaAzimuth}</Text>).
+                        </Text>
+                        <Text style={[styles.sopStepDesc, { color: '#10B981', fontWeight: '600', marginTop: 4 }]}>
+                          ✓ Garis lurus benang tersebut adalah Arah Kiblat hakiki yang presisi bebas dari gangguan medan magnet kompas.
+                        </Text>
+                      </View>
+                    </ScrollView>
+                  )}
 
                   <TouchableOpacity
                     style={styles.btnCloseModal}
                     onPress={() => setShowIllustration(false)}
                   >
-                    <Text style={styles.btnCloseText}>Tutup Ilustrasi</Text>
+                    <Text style={styles.btnCloseText}>Tutup</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -406,10 +554,9 @@ export const HisabScreen = () => {
   );
 };
 
-
 const styles = StyleSheet.create({
   scrollContent: {
-    padding: 12, // Memastikan scroll tidak tertutup bottom navbar
+    padding: 12,
   },
   title: { fontSize: 20, fontWeight: 'bold', marginTop: 12 },
   subtitle: { fontSize: 13, marginBottom: 16 },
@@ -483,116 +630,154 @@ const styles = StyleSheet.create({
   // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
   modalContent: {
     width: '100%',
-    borderRadius: 16,
-    padding: 20,
+    maxHeight: '92%',
+    borderRadius: 18,
+    padding: 16,
     alignItems: 'center',
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  modalSubtitle: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 20,
-  },
-
-  // Compass Visualiser
-  compassCircle: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 2,
-    borderColor: '#334155',
-    backgroundColor: '#0F172A',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  cardinalText: {
-    position: 'absolute',
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  centerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#F8FAFC',
-    zIndex: 10,
-  },
-  needleContainer: {
-    position: 'absolute',
-    width: 4,
-    height: 170,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-  },
-  needlePointer: {
-    width: 4,
-    height: 75,
-    borderRadius: 2,
-  },
-  qiblaBadge: {
-    position: 'absolute',
-    top: -12,
-    backgroundColor: '#10B981',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  sunBadge: {
-    position: 'absolute',
-    top: -12,
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-
-  // Legend & Modal Close
-  legendContainer: {
-    marginTop: 20,
+  segmentContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 12,
     width: '100%',
-    gap: 8,
   },
-  legendItem: {
+  segmentBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  segmentBtnActive: {
+    backgroundColor: '#0284C7',
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  replayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  dataBadgeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    marginTop: 12,
+    width: '100%',
   },
-  dotLegend: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  dataBadge: {
+    flex: 1,
+    minWidth: '47%',
+    padding: 10,
+    borderRadius: 10,
   },
-  legendText: {
+  dataBadgeLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  dataBadgeVal: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  dataBadgeSub: {
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+
+  // SOP Card Styles
+  sopStepCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    width: '100%',
+  },
+  sopStepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 6,
+  },
+  sopBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sopBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  sopStepTitle: {
     fontSize: 13,
+    fontWeight: 'bold',
+    flex: 1,
   },
+  sopStepDesc: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  formulaBox: {
+    backgroundColor: '#0F172A',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 6,
+  },
+  formulaTxt: {
+    color: '#FDE68A',
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+
   btnCloseModal: {
-    marginTop: 20,
+    marginTop: 14,
     width: '100%',
     backgroundColor: '#334155',
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
   },
   btnCloseText: {
     color: '#F8FAFC',
     fontWeight: 'bold',
+    fontSize: 13,
   },
 });

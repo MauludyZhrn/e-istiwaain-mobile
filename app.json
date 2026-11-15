@@ -1,20 +1,24 @@
 {
   "expo": {
-    "name": "e-istiwaain",
+    "name": "e-Istiwaain",
     "slug": "e-istiwaain",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/icon.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/icon_gold.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.mldyzhrn.eistiwaain"
@@ -26,6 +30,21 @@
       "eas": {
         "projectId": "f258df95-d81f-4ffa-82b7-8d8382643d88"
       }
-    }
+    },
+    "plugins": [
+      "expo-audio",
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#09473E",
+          "sounds": [
+            "./assets/audio/adzan_subuh.mp3",
+            "./assets/audio/adzan_biasa.mp3"
+          ]
+        }
+      ]
+    ]
   }
 }

@@ -1,14 +1,14 @@
-import React from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
-import { SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Layers, ShieldCheck, Wrench } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import { kiblatModulesData } from '../../constants/kiblatModulesData';
 import {
   ContentBlock,
@@ -163,7 +163,7 @@ export const ModuleDetailScreen = () => {
         {/* Referensi Kitab & Dokumen */}
         {moduleData.references && moduleData.references.length > 0 && (
           <View style={styles.referencesContainer}>
-            <Text style={styles.referenceTitle}>REFERENSI UDA</Text>
+            <Text style={styles.referenceTitle}>REFERENSI UTAMA</Text>
             {moduleData.references.map((ref: string, idx: number) => (
               <Text key={idx} style={styles.referenceItem}>
                 {idx + 1}. {ref}
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   },
   formulaExpression: {
     color: '#F8FAFC',
-    fontFamily: 'Platform',
+    fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
     fontSize: 13,
     lineHeight: 20,
   },

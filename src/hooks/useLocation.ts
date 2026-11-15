@@ -36,7 +36,7 @@ export const useLocation = () => {
         setUserLocation(coords);
       }
 
-      setUserLocation(coords);
+
       setErrorMsg(null);
     } catch (err) {
       setErrorMsg('Gagal mengambil koordinat GPS');

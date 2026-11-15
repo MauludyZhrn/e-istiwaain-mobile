@@ -1,10 +1,18 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CalculationMethod } from '../utils/falakMath';
 
-export type AdhanSoundType = 'default' | 'makkah' | 'madinah' | 'bip' | 'silent';
-export type CalculationMethodType = 'Kemenag RI (Falak)' | 'MWL' | 'Egyptian' | 'Umm al-Qura';
+export type AdhanSoundType =
+  | 'auto'
+  | 'biasa'
+  | 'subuh'
+  | 'default'
+  | 'makkah'
+  | 'madinah'
+  | 'bip'
+  | 'silent';
+export type CalculationMethodType = CalculationMethod;
 
 interface AppState {
   isDarkMode: boolean;
@@ -29,6 +37,26 @@ interface AppState {
   calculationMethod: CalculationMethod;
   setCalculationMethod: (method: CalculationMethod) => void;
 }
+
+const safeAsyncStorage: StateStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    try {
+      return (await AsyncStorage.getItem(name)) ?? null;
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(name, value);
+    } catch {}
+  },
+  removeItem: async (name: string): Promise<void> => {
+    try {
+      await AsyncStorage.removeItem(name);
+    } catch {}
+  },
+};
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -66,11 +94,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'app-storage',
-      storage: createJSONStorage(() => ({
-        getItem: (name) => null,
-        setItem: (name, value) => {},
-        removeItem: (name) => {},
-      })),
+      storage: createJSONStorage(() => safeAsyncStorage),
     }
   )
 );

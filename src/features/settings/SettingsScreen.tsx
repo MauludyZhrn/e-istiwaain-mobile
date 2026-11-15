@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,14 @@ import {
   Switch,
   Alert,
   Modal,
+  Image,
 } from 'react-native';
 import {
   Moon,
   Sun,
   Bell,
   Volume2,
+  VolumeX,
   MapPin,
   Calculator,
   ChevronRight,
@@ -22,30 +24,67 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, AdhanSoundType } from '../../store/useAppStore';
 import { colors } from '../../constants/colors';
 import { CalculationMethod } from '../../utils/falakMath';
+import {
+  playAzanSound,
+  stopAzanSound,
+  subscribeAzanState,
+  AzanPlaybackState,
+} from '../../services/soundService';
+
+const LOGO_COLOR = require('../../../assets/e-Istiwaain-Logo/png/logo-color_512.png');
+const LOGO_WHITE = require('../../../assets/e-Istiwaain-Logo/png/logo-white_512.png');
+
+function getAdhanSoundLabel(sound: AdhanSoundType): string {
+  switch (sound) {
+    case 'auto':
+    case 'makkah':
+    case 'default':
+      return 'Otomatis (Adzan Subuh & Standar)';
+    case 'biasa':
+    case 'madinah':
+      return 'Adzan Standar (adzan_biasa.mp3)';
+    case 'subuh':
+      return 'Adzan Subuh (adzan_subuh.mp3)';
+    case 'silent':
+      return 'Senyap (Tanpa Suara)';
+    default:
+      return 'Otomatis (Adzan Subuh & Standar)';
+  }
+}
 
 export const SettingsScreen = () => {
   const insets = useSafeAreaInsets();
 
-  // Integrated Store States & Actions
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const toggleTheme = useAppStore((state) => state.toggleTheme);
-  
-  const adhanSound = useAppStore((state) => state.adhanSound) ?? 'Azan Makkah';
-  const setAdhanSound = useAppStore((state) => (state as any).setAdhanSound);
 
-  const notificationsEnabled = useAppStore((state) => (state as any).notificationsEnabled) ?? true;
-  const setNotificationsEnabled = useAppStore((state) => (state as any).setNotificationsEnabled);
+  const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
+  const setAdhanSound = useAppStore((state) => state.setAdhanSound);
 
-  const autoLocation = useAppStore((state) => (state as any).autoLocation) ?? true;
-  const setAutoLocation = useAppStore((state) => (state as any).setAutoLocation);
+  const notificationsEnabled = useAppStore((state) => state.notificationsEnabled) ?? true;
+  const setNotificationsEnabled = useAppStore((state) => state.setNotificationsEnabled);
 
-  const calculationMethod = useAppStore((state) => (state as any).calculationMethod) ?? 'Kemenag RI (Falak)';
-  const setCalculationMethod = useAppStore((state) => (state as any).setCalculationMethod);
+  const autoLocation = useAppStore((state) => state.autoLocation) ?? true;
+  const setAutoLocation = useAppStore((state) => state.setAutoLocation);
+
+  const calculationMethod = useAppStore((state) => state.calculationMethod) ?? 'Kemenag RI (Falak)';
+  const setCalculationMethod = useAppStore((state) => state.setCalculationMethod);
 
   const theme = isDarkMode ? colors.dark : colors.light;
+
+  const [azanState, setAzanState] = useState<AzanPlaybackState>({
+    isPlaying: false,
+    prayerKey: null,
+    audioLabel: null,
+  });
+
+  useEffect(() => {
+    const unsubscribe = subscribeAzanState((st) => setAzanState(st));
+    return unsubscribe;
+  }, []);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -60,25 +99,32 @@ export const SettingsScreen = () => {
       { label: 'Egyptian General Authority', value: 'Egyptian' },
       { label: 'Umm al-Qura (Makkah)', value: 'Umm al-Qura' },
     ]);
-    setOnSelectCallback(() => (val: string) => setCalculationMethod(val));
+    setOnSelectCallback(() => (val: string) => setCalculationMethod(val as CalculationMethod));
     setModalVisible(true);
   };
 
   const handleAudioSelect = () => {
-    setModalTitle('Pilih Suara Notifikasi');
+    setModalTitle('Pilih Audio Adzan');
     setModalOptions([
-      { label: 'Azan Makkah', value: 'makkah' },
-      { label: 'Azan Madinah', value: 'madinah' },
-      { label: 'Nada Bip Singkat', value: 'bip' },
-      { label: 'Senyap (Silent)', value: 'silent' },
+      { label: 'Otomatis (Adzan Subuh & Standar)', value: 'auto' },
+      { label: 'Adzan Standar (adzan_biasa.mp3)', value: 'biasa' },
+      { label: 'Adzan Subuh (adzan_subuh.mp3)', value: 'subuh' },
+      { label: 'Senyap / Tanpa Suara (Silent)', value: 'silent' },
     ]);
-    setOnSelectCallback(() => (val: string) => setAdhanSound(val));
+    setOnSelectCallback(() => (val: string) => setAdhanSound(val as AdhanSoundType));
     setModalVisible(true);
+  };
+
+  const handlePreviewAudio = async (type: 'biasa' | 'subuh') => {
+    if (azanState.isPlaying && azanState.prayerKey === type) {
+      await stopAzanSound();
+      return;
+    }
+    await playAzanSound(type, undefined, type);
   };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header dengan Safe Area Padding */}
       <View style={[styles.header, { marginTop: insets.top + 10 }]}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>Pengaturan</Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
@@ -110,7 +156,7 @@ export const SettingsScreen = () => {
         </View>
 
         {/* SECTION: NOTIFIKASI & AZAN */}
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>NOTIFIKASI & ALARM</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>NOTIFIKASI & AUDIO ADZAN</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.row}>
             <View style={styles.rowLeft}>
@@ -118,7 +164,7 @@ export const SettingsScreen = () => {
               <View>
                 <Text style={[styles.itemText, { color: theme.textPrimary }]}>Pengingat Shalat</Text>
                 <Text style={[styles.itemSubtext, { color: theme.textSecondary }]}>
-                  Aktifkan semua notifikasi azan
+                  Aktifkan semua notifikasi & suara adzan
                 </Text>
               </View>
             </View>
@@ -136,14 +182,67 @@ export const SettingsScreen = () => {
             <View style={styles.rowLeft}>
               <Volume2 color={theme.iconi} size={20} />
               <View>
-                <Text style={[styles.itemText, { color: theme.textPrimary }]}>Suara Notifikasi</Text>
+                <Text style={[styles.itemText, { color: theme.textPrimary }]}>Pilihan Suara Adzan</Text>
                 <Text style={[styles.itemSubtext, { color: theme.accent, fontWeight: '500' }]}>
-                  {adhanSound === 'silent' ? 'Senyap (Silent)' : adhanSound}
+                  {getAdhanSoundLabel(adhanSound)}
                 </Text>
               </View>
             </View>
             <ChevronRight color={theme.textSecondary} size={18} />
           </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+          {/* TOMBOL UJI PUTAR AUDIO ADZAN */}
+          <View style={styles.previewRow}>
+            <TouchableOpacity
+              style={[
+                styles.previewBtn,
+                {
+                  backgroundColor:
+                    azanState.isPlaying && azanState.prayerKey === 'biasa'
+                      ? '#EF4444'
+                      : '#09473E',
+                },
+              ]}
+              onPress={() => handlePreviewAudio('biasa')}
+            >
+              {azanState.isPlaying && azanState.prayerKey === 'biasa' ? (
+                <VolumeX color="#FFFFFF" size={15} />
+              ) : (
+                <Volume2 color="#F9A729" size={15} />
+              )}
+              <Text style={styles.previewBtnText}>
+                {azanState.isPlaying && azanState.prayerKey === 'biasa'
+                  ? 'Stop Adzan Biasa'
+                  : 'Tes Adzan Biasa'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.previewBtn,
+                {
+                  backgroundColor:
+                    azanState.isPlaying && azanState.prayerKey === 'subuh'
+                      ? '#EF4444'
+                      : '#09473E',
+                },
+              ]}
+              onPress={() => handlePreviewAudio('subuh')}
+            >
+              {azanState.isPlaying && azanState.prayerKey === 'subuh' ? (
+                <VolumeX color="#FFFFFF" size={15} />
+              ) : (
+                <Volume2 color="#F9A729" size={15} />
+              )}
+              <Text style={styles.previewBtnText}>
+                {azanState.isPlaying && azanState.prayerKey === 'subuh'
+                  ? 'Stop Adzan Subuh'
+                  : 'Tes Adzan Subuh'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* SECTION: LOKASI & KALKULASI */}
@@ -210,15 +309,23 @@ export const SettingsScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-          Aplikasi e-istiwaain © 2026
-        </Text>
+        <View style={styles.brandFooter}>
+          <Image
+            source={isDarkMode ? LOGO_WHITE : LOGO_COLOR}
+            style={styles.brandFooterLogo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.footerText, { color: theme.textSecondary }]}>
+            Aplikasi e-Istiwaain © 2026
+          </Text>
+        </View>
       </ScrollView>
+
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
           <View style={[styles.modalContainer, { backgroundColor: theme.surface }]}>
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>{modalTitle}</Text>
-            
+
             <ScrollView style={{ maxHeight: 300 }}>
               {modalOptions.map((item, index) => (
                 <TouchableOpacity
@@ -241,7 +348,6 @@ export const SettingsScreen = () => {
         </TouchableOpacity>
       </Modal>
     </View>
-    
   );
 };
 
@@ -279,7 +385,36 @@ const styles = StyleSheet.create({
   itemText: { fontSize: 14, fontWeight: '600' },
   itemSubtext: { fontSize: 12, marginTop: 2 },
   divider: { height: 1, width: '100%' },
-  footerText: { textAlign: 'center', fontSize: 12, marginVertical: 24 },
+  previewRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  previewBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  previewBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  brandFooter: {
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  brandFooterLogo: {
+    width: 120,
+    height: 56,
+    marginBottom: 4,
+  },
+  footerText: { textAlign: 'center', fontSize: 12 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

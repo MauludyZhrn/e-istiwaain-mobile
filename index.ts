@@ -1,3 +1,7 @@
+if (typeof process !== 'undefined' && typeof (process as any).emitWarning !== 'function') {
+  (process as any).emitWarning = () => {};
+}
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

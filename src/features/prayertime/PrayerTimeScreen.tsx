@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -26,42 +26,47 @@ import {
   VolumeX,
 } from 'lucide-react-native';
 import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { playAzanSound, stopAzanSound } from '../../services/soundService';
+import {
+  playAzanSound,
+  stopAzanSound,
+  subscribeAzanState,
+  syncPrayerNotifications,
+  AzanPlaybackState,
+} from '../../services/soundService';
 import { useAppStore } from '../../store/useAppStore';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { toDMS } from '../../utils/falakMath';
 
-const isExpoGo = Constants.appOwnership === 'expo';
+// Deteksi Expo Go yang Akurat & Aman untuk SDK Terbaru
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-// Inisialisasi Handler hanya jika BUKAN di Expo Go
+// Inisialisasi Handler Notifikasi Global
 if (!isExpoGo) {
-  try {
-    Notifications.setNotificationHandler({
-      handleNotification: async () =>
-        ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-        } as any),
-    });
-  } catch (e) {
-    // Safe fallback
-  }
+  Notifications.setNotificationHandler({
+    handleNotification: async () =>
+      ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      } as Notifications.NotificationBehavior),
+  });
+}
 
+// Setup Channel Android
+const setupAndroidChannel = async () => {
   if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync('adhan-notifications', {
+    await Notifications.setNotificationChannelAsync('adhan-notifications', {
       name: 'Notifikasi Azan',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#10B981',
-      // Hapus baris sound: 'default' di sini agar Android otomatis memakai suara notifikasi default sistem
     });
   }
-}
+};
 
 // --- FUNGSI KALKULASI WAKTU SHALAT ASTRONOMI (FALAK) ---
 const calculatePrayerTimes = (
@@ -69,13 +74,12 @@ const calculatePrayerTimes = (
   lat: number,
   lng: number,
   method: string = 'Kemenag RI (Falak)',
-  timeZone: number = -date.getTimezoneOffset() / 60 // Otomatis deteksi UTC offset HP pengguna
+  timeZone: number = -date.getTimezoneOffset() / 60
 ) => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
 
-  // Tentukan parameter sudut berdasarkan metode
   let subuhAngle = -20;
   let isyaAngle = -18;
   let isyaFixedMinutes = 0;
@@ -91,7 +95,7 @@ const calculatePrayerTimes = (
       break;
     case 'Umm al-Qura':
       subuhAngle = -18.5;
-      isyaFixedMinutes = 90; // Fixed 90 menit setelah Maghrib
+      isyaFixedMinutes = 90;
       break;
     case 'Kemenag RI (Falak)':
     default:
@@ -142,7 +146,6 @@ const calculatePrayerTimes = (
   const maghribH = hourAngle(-0.833);
   const maghribTime = noon + maghribH;
 
-  // Hitung Isya sesuai metode
   let isyaTime = 0;
   if (method === 'Umm al-Qura') {
     isyaTime = maghribTime + isyaFixedMinutes / 60;
@@ -185,15 +188,40 @@ export const PrayerTimeScreen = () => {
   
   const alarms = useAppStore((state) => state.alarms);
   const setAlarmToggle = useAppStore((state) => state.setAlarmToggle);
-  const adhanSound = useAppStore((state) => state.adhanSound);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const notificationsEnabled = useAppStore((state) => state.notificationsEnabled) ?? true;
+  const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
+  const [azanState, setAzanState] = useState<AzanPlaybackState>({
+    isPlaying: false,
+    prayerKey: null,
+    audioLabel: null,
+  });
+  const lastTriggeredRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeAzanState((st) => setAzanState(st));
+    return unsubscribe;
+  }, []);
+
   const handleToggleAzan = async (prayerKey: string = 'dzuhur') => {
-    if (isPlaying) {
+    if (azanState.isPlaying && azanState.prayerKey === prayerKey.toLowerCase()) {
       await stopAzanSound();
-      setIsPlaying(false);
-    } else {
-      await playAzanSound(prayerKey);
-      setIsPlaying(true);
+      return;
+    }
+    if (adhanSound === 'silent') {
+      Alert.alert(
+        'Mode Senyap Aktif',
+        'Suara azan disetel ke Senyap (Silent). Buka menu Pengaturan jika ingin mengaktifkan suara.'
+      );
+      return;
+    }
+    const keyToPlay =
+      prayerKey === 'imsak' || prayerKey === 'terbit' ? 'subuh' : prayerKey;
+    const ok = await playAzanSound(keyToPlay, undefined, adhanSound);
+    if (!ok) {
+      Alert.alert(
+        'Info Audio Adzan',
+        'Pastikan izin audio aktif dan aplikasi dijalankan melalui Development Build.'
+      );
     }
   };
 
@@ -214,23 +242,24 @@ export const PrayerTimeScreen = () => {
   const todayTimes = calculatePrayerTimes(now, lat, lng, calculationMethod);
 
   const createTodayPrayerDate = (timeStr: string) => {
-    const [h, m] = timeStr.split(':').map(Number);
+    const [h, m] = (timeStr || '').split(':').map(Number);
     const d = new Date(now);
-    d.setHours(h, m, 0, 0);
+    if (!isNaN(h) && !isNaN(m)) {
+      d.setHours(h, m, 0, 0);
+    }
     return d;
   };
 
   const scheduleList = [
-    { key: 'imsak', name: 'Imsak', time: todayTimes.imsak, dateObj: createTodayPrayerDate(todayTimes.imsak), icon: Sunrise, hasAlarm: false },
+    { key: 'imsak', name: 'Imsak', time: todayTimes.imsak, dateObj: createTodayPrayerDate(todayTimes.imsak), icon: Sunrise, hasAlarm: true },
     { key: 'subuh', name: 'Subuh', time: todayTimes.subuh, dateObj: createTodayPrayerDate(todayTimes.subuh), icon: Sunrise, hasAlarm: true },
-    { key: 'terbit', name: 'Terbit', time: todayTimes.terbit, dateObj: createTodayPrayerDate(todayTimes.terbit), icon: Sun, hasAlarm: false },
+    { key: 'terbit', name: 'Terbit', time: todayTimes.terbit, dateObj: createTodayPrayerDate(todayTimes.terbit), icon: Sun, hasAlarm: true },
     { key: 'dzuhur', name: 'Dzuhur', time: todayTimes.dzuhur, dateObj: createTodayPrayerDate(todayTimes.dzuhur), icon: Sun, hasAlarm: true },
     { key: 'ashar', name: 'Ashar', time: todayTimes.ashar, dateObj: createTodayPrayerDate(todayTimes.ashar), icon: Sun, hasAlarm: true },
     { key: 'maghrib', name: 'Maghrib', time: todayTimes.maghrib, dateObj: createTodayPrayerDate(todayTimes.maghrib), icon: Sunset, hasAlarm: true },
     { key: 'isya', name: 'Isya', time: todayTimes.isya, dateObj: createTodayPrayerDate(todayTimes.isya), icon: Moon, hasAlarm: true },
   ];
 
-  // Cari waktu shalat yang sedang berlangsung & waktu shalat berikutnya
   let activeIndex = -1;
   for (let i = 0; i < scheduleList.length; i++) {
     if (now >= scheduleList[i].dateObj) {
@@ -240,7 +269,6 @@ export const PrayerTimeScreen = () => {
     }
   }
 
-  // Jika sebelum Imsak, aktifnya dianggap Isya
   if (activeIndex === -1) {
     activeIndex = scheduleList.length - 1;
   }
@@ -256,7 +284,6 @@ export const PrayerTimeScreen = () => {
   let nextPrayer = scheduleList[nextIndex];
   let targetTime = nextPrayer.dateObj.getTime();
 
-  // Jika shalat berikutnya adalah besok hari (misal setelah Isya menuju Imsak/Subuh)
   if (isNextDay) {
     targetTime += 24 * 60 * 60 * 1000;
   }
@@ -268,43 +295,88 @@ export const PrayerTimeScreen = () => {
 
   const countdownText = `${hoursLeft < 10 ? '0' : ''}${hoursLeft}:${minsLeft < 10 ? '0' : ''}${minsLeft}:${secsLeft < 10 ? '0' : ''}${secsLeft}`;
 
-  const toggleAlarm = async (prayerKey: string, prayerName: string, dateObj: Date) => {
+  // Sinkronisasi penjadwalan notifikasi Adzan otomatis
+  useEffect(() => {
+    syncPrayerNotifications(todayTimes, alarms, notificationsEnabled, adhanSound);
+  }, [
+    todayTimes.subuh,
+    todayTimes.dzuhur,
+    todayTimes.ashar,
+    todayTimes.maghrib,
+    todayTimes.isya,
+    alarms,
+    notificationsEnabled,
+    adhanSound,
+  ]);
+
+  // Pemicu otomatis suara Adzan saat jam memasuki waktu shalat (ketika aplikasi sedang terbuka)
+  useEffect(() => {
+    if (!notificationsEnabled || adhanSound === 'silent') return;
+    const hh = now.getHours() < 10 ? `0${now.getHours()}` : `${now.getHours()}`;
+    const mm = now.getMinutes() < 10 ? `0${now.getMinutes()}` : `${now.getMinutes()}`;
+    const currentHM = `${hh}:${mm}`;
+    const secs = now.getSeconds();
+
+    if (secs <= 2) {
+      const fardhuKeys: Array<keyof typeof todayTimes> = [
+        'subuh',
+        'dzuhur',
+        'ashar',
+        'maghrib',
+        'isya',
+      ];
+      for (const k of fardhuKeys) {
+        const triggerId = `${now.toDateString()}-${k}-${currentHM}`;
+        if (todayTimes[k] === currentHM && alarms[k] && lastTriggeredRef.current !== triggerId) {
+          lastTriggeredRef.current = triggerId;
+          playAzanSound(k, undefined, adhanSound);
+          break;
+        }
+      }
+    }
+  }, [now, todayTimes, alarms, notificationsEnabled, adhanSound]);
+
+  // FUNGSI ALARM YANG SUDAH DIPERBAIKI (BEBAS RED SCREEN)
+  const toggleAlarm = async (prayerKey: string, prayerName: string, _dateObj: Date) => {
     const isCurrentlyOn = !!alarms[prayerKey];
     const newStatus = !isCurrentlyOn;
+    const nextAlarms = { ...alarms, [prayerKey]: newStatus };
 
+    // 1. Update state di UI / Zustand
     setAlarmToggle(prayerKey, newStatus);
 
     if (newStatus) {
-      if (!isExpoGo) {
-        try {
-          // Jika waktu shalat hari ini sudah lewat, jadwalkan notifikasi untuk besok
-          let targetDate = new Date(dateObj);
-          if (targetDate.getTime() <= Date.now()) {
-            targetDate.setDate(targetDate.getDate() + 1);
-          }
-
-          const triggerSeconds = Math.max(1, Math.floor((targetDate.getTime() - Date.now()) / 1000));
-
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: `🕌 Waktu Shalat ${prayerName} Telah Tiba!`,
-              body: `Saatnya menunaikan ibadah shalat ${prayerName}.`,
-              sound: adhanSound !== 'silent',
-              categoryIdentifier: 'adhan',
-            },
-            trigger: { 
-              seconds: triggerSeconds,
-              channelId: 'adhan-notifications',
-            } as any,
-          });
-        } catch (error) {
-          // Fallback
-        }
+      if (isExpoGo) {
+        Alert.alert(
+          'Mode Expo Go Detected',
+          'Fitur notifikasi lokal terjadwal membutuhkan Development Build (APK). Jalankan build mandiri untuk menguji alarm notifikasi di perangkat.'
+        );
+        return;
       }
 
-      Alert.alert('Alarm Aktif', `Pengingat Azan ${prayerName} berhasil diaktifkan.`);
+      const ok = await syncPrayerNotifications(
+        todayTimes,
+        nextAlarms,
+        notificationsEnabled,
+        adhanSound
+      );
+      if (ok) {
+        const audioInfo =
+          adhanSound === 'silent'
+            ? 'Mode Senyap'
+            : prayerKey === 'subuh' && adhanSound !== 'biasa'
+            ? 'Audio: Adzan Subuh'
+            : 'Audio: Adzan Standar';
+        Alert.alert(
+          'Alarm Adzan Aktif',
+          `Pengingat waktu ${prayerName} (${todayTimes[prayerKey as keyof typeof todayTimes]}) berhasil dijadwalkan (${audioInfo}).`
+        );
+      } else {
+        Alert.alert('Izin Ditolak', 'Aktifkan izin notifikasi di pengaturan HP.');
+      }
     } else {
-      Alert.alert('Alarm Dimatikan', `Pengingat Azan ${prayerName} dinonaktifkan.`);
+      await syncPrayerNotifications(todayTimes, nextAlarms, notificationsEnabled, adhanSound);
+      Alert.alert('Alarm Dimatikan', `Pengingat waktu ${prayerName} dinonaktifkan.`);
     }
   };
 
@@ -342,7 +414,6 @@ export const PrayerTimeScreen = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header dengan Dynamic Notch Padding */}
       <View style={[styles.header, { marginTop: insets.top + 10 }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: theme.textPrimary }]}>
@@ -353,25 +424,25 @@ export const PrayerTimeScreen = () => {
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* Tombol Tes Audio Azan */}
           <TouchableOpacity
             style={[
               styles.toggleBtn,
               {
-                backgroundColor: isPlaying ? theme.accent : theme.surface,
+                backgroundColor: azanState.isPlaying ? theme.accent : theme.surface,
                 borderColor: theme.border,
               },
             ]}
-            onPress={() => handleToggleAzan(nextPrayer.key)}
+            onPress={() =>
+              azanState.isPlaying ? stopAzanSound() : handleToggleAzan(nextPrayer.key)
+            }
           >
-            {isPlaying ? (
+            {azanState.isPlaying ? (
               <VolumeX color="#FFFFFF" size={20} />
             ) : (
               <Volume2 color={theme.iconi} size={20} />
             )}
           </TouchableOpacity>
 
-          {/* Tombol Toggle Kalender */}
           <TouchableOpacity
             style={[styles.toggleBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
             onPress={() => setViewMode(viewMode === 'daily' ? 'monthly' : 'daily')}
@@ -385,7 +456,19 @@ export const PrayerTimeScreen = () => {
         </View>
       </View>
 
-      {/* Card Countdown */}
+      {azanState.isPlaying && (
+        <View style={styles.azanPlayingBanner}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.azanPlayingTitle}>🕌 Adzan Sedang Berkumandang</Text>
+            <Text style={styles.azanPlayingSub}>{azanState.audioLabel}</Text>
+          </View>
+          <TouchableOpacity style={styles.azanStopBtn} onPress={() => stopAzanSound()}>
+            <VolumeX color="#FFFFFF" size={14} />
+            <Text style={styles.azanStopBtnText}>Hentikan</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {viewMode === 'daily' && (
         <View style={[styles.countdownCard, { backgroundColor: theme.cardPrimary }]}>
           <View style={styles.rowBetween}>
@@ -398,7 +481,6 @@ export const PrayerTimeScreen = () => {
         </View>
       )}
 
-      {/* Info Lokasi */}
       <View style={[styles.infoCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.rowBetween}>
           <View style={styles.rowGap}>
@@ -432,7 +514,6 @@ export const PrayerTimeScreen = () => {
         </View>
       </View>
 
-      {/* MODE HARIAN */}
       {viewMode === 'daily' ? (
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.listContainer}>
@@ -440,6 +521,9 @@ export const PrayerTimeScreen = () => {
               const IconComponent = item.icon;
               const isActive = index === activeIndex;
               const isAlarmOn = !!alarms[item.key];
+              const canPlayAdzan = item.key !== 'imsak' && item.key !== 'terbit';
+              const isThisPrayerPlaying =
+                azanState.isPlaying && azanState.prayerKey === item.key;
 
               return (
                 <View
@@ -454,7 +538,7 @@ export const PrayerTimeScreen = () => {
                   ]}
                 >
                   <View style={styles.scheduleLeft}>
-                    <IconComponent color={isActive ? theme.accent : theme.cardPrimary} size={22} />
+                    <IconComponent color={isActive ? theme.accent : theme.iconi} size={22} />
                     <View>
                       <Text
                         style={[
@@ -464,11 +548,21 @@ export const PrayerTimeScreen = () => {
                       >
                         {item.name}
                       </Text>
-                      {isActive && (
+                      {isActive ? (
                         <Text style={[styles.activeBadge, { color: theme.accent }]}>
                           Sedang Berlangsung
                         </Text>
-                      )}
+                      ) : canPlayAdzan ? (
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: isActive ? '#E2E8F0' : theme.textSecondary,
+                            marginTop: 1,
+                          }}
+                        >
+                          {item.key === 'subuh' ? 'Audio: Adzan Subuh' : 'Audio: Adzan Standar'}
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
 
@@ -483,13 +577,32 @@ export const PrayerTimeScreen = () => {
                       {item.time} {getTimeZoneLabel()}
                     </Text>
 
+                    {canPlayAdzan && (
+                      <TouchableOpacity
+                        style={[
+                          styles.audioRowBtn,
+                          isThisPrayerPlaying && { backgroundColor: '#EF4444' },
+                        ]}
+                        onPress={() => handleToggleAzan(item.key)}
+                      >
+                        {isThisPrayerPlaying ? (
+                          <VolumeX color="#FFFFFF" size={16} />
+                        ) : (
+                          <Volume2
+                            color={isActive ? theme.accent : theme.iconi}
+                            size={16}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    )}
+
                     {item.hasAlarm && (
                       <TouchableOpacity
                         style={styles.bellBtn}
                         onPress={() => toggleAlarm(item.key, item.name, item.dateObj)}
                       >
                         {isAlarmOn ? (
-                          <Bell color={isActive ? theme.accent : theme.cardPrimary} size={20} />
+                          <Bell color={isActive ? theme.accent : theme.iconi} size={20} />
                         ) : (
                           <BellOff color={isActive ? theme.border : theme.textSecondary} size={20} />
                         )}
@@ -502,7 +615,6 @@ export const PrayerTimeScreen = () => {
           </View>
         </ScrollView>
       ) : (
-        /* MODE BULANAN */
         <ScrollView horizontal showsHorizontalScrollIndicator={true}>
           <View>
             <View style={[styles.tableHeader, { backgroundColor: theme.cardPrimary }]}>
@@ -564,6 +676,48 @@ const styles = StyleSheet.create({
   countdownCard: { borderRadius: 12, padding: 14, marginBottom: 12, elevation: 3 },
   countdownTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' },
   countdownTimer: { color: '#D4AF37', fontSize: 16, fontWeight: 'bold' },
+
+  azanPlayingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#09473E',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    gap: 10,
+  },
+  azanPlayingTitle: {
+    color: '#FDE68A',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  azanPlayingSub: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  azanStopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  azanStopBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  audioRowBtn: {
+    padding: 6,
+    borderRadius: 8,
+    marginLeft: 2,
+  },
 
   infoCard: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 16},
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

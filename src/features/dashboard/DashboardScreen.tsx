@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
   Dimensions,
+  Image,
 } from 'react-native';
 import {
   MapPin,
@@ -15,6 +16,7 @@ import {
   Compass,
   BookOpen,
   Grid,
+  VolumeX,
 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 
@@ -22,6 +24,14 @@ import { useAppStore } from '../../store/useAppStore';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { calculatePrayerTimes, getDefaultTimezone, getTimeZoneLabel } from '../../utils/falakMath';
+import {
+  playAzanSound,
+  stopAzanSound,
+  subscribeAzanState,
+  AzanPlaybackState,
+} from '../../services/soundService';
+
+const APP_ICON_COLOR = require('../../../assets/e-Istiwaain-Logo/png/icon-color_512.png');
 
 // --- KOMPONEN RUNNING TEXT (MARQUEE) ---
 const RunningText = ({ text, style }: { text: string; style: any }) => {
@@ -111,6 +121,9 @@ export const DashboardScreen = ({ navigation }: any) => {
   const theme = isDarkMode ? colors.dark : colors.light;
   const { location } = useLocation();
   const calculationMethod = useAppStore((state) => state.calculationMethod);
+  const alarms = useAppStore((state) => state.alarms);
+  const notificationsEnabled = useAppStore((state) => state.notificationsEnabled) ?? true;
+  const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
 
   const [now, setNow] = useState(new Date());
   const [addressName, setAddressName] = useState('Memuat lokasi...');
@@ -120,6 +133,17 @@ export const DashboardScreen = ({ navigation }: any) => {
     countdown: '-00:00:00',
   });
   const [timeIstiwaStr, setTimeIstiwaStr] = useState('--:--:-- Istiwa\'');
+  const [azanState, setAzanState] = useState<AzanPlaybackState>({
+    isPlaying: false,
+    prayerKey: null,
+    audioLabel: null,
+  });
+  const lastTriggeredRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeAzanState((st) => setAzanState(st));
+    return unsubscribe;
+  }, []);
 
   // Update Jam Real-Time
   useEffect(() => {
@@ -214,20 +238,42 @@ export const DashboardScreen = ({ navigation }: any) => {
       });
 
       // Hitung Waktu Istiwa' Real-Time (Kalkulasi Falak: Tepat Zuhur = 12:00:00 Istiwa')
-      if (prayerTimes.Zuhur) {
+      if (prayerTimes.Zuhur && prayerTimes.Zuhur !== '--:--') {
         const [zh, zm] = prayerTimes.Zuhur.split(':').map(Number);
-        const zuhurSec = zh * 3600 + zm * 60;
-        const istiwaSecBase = 12 * 3600 + (currentSec - zuhurSec);
+        if (!isNaN(zh) && !isNaN(zm)) {
+          const zuhurSec = zh * 3600 + zm * 60;
+          const istiwaSecBase = 12 * 3600 + (currentSec - zuhurSec);
 
-        let normalizedIstiwa = ((istiwaSecBase % 86400) + 86400) % 86400;
-        const iH = Math.floor(normalizedIstiwa / 3600);
-        const iM = Math.floor((normalizedIstiwa % 3600) / 60);
-        const iS = Math.floor(normalizedIstiwa % 60);
+          let normalizedIstiwa = ((istiwaSecBase % 86400) + 86400) % 86400;
+          const iH = Math.floor(normalizedIstiwa / 3600);
+          const iM = Math.floor((normalizedIstiwa % 3600) / 60);
+          const iS = Math.floor(normalizedIstiwa % 60);
 
-        setTimeIstiwaStr(`${formatTwoDigits(iH)}:${formatTwoDigits(iM)}:${formatTwoDigits(iS)} Istiwa'`);
+          setTimeIstiwaStr(`${formatTwoDigits(iH)}:${formatTwoDigits(iM)}:${formatTwoDigits(iS)} Istiwa'`);
+        }
+      }
+
+      // Pemicu otomatis Adzan saat memasuki waktu shalat fardhu
+      if (notificationsEnabled && adhanSound !== 'silent' && now.getSeconds() <= 2) {
+        const currentHM = `${formatTwoDigits(now.getHours())}:${formatTwoDigits(now.getMinutes())}`;
+        const fardhuMap: Array<{ key: string; timeStr: string }> = [
+          { key: 'subuh', timeStr: prayerTimes.Subuh },
+          { key: 'dzuhur', timeStr: prayerTimes.Zuhur },
+          { key: 'ashar', timeStr: prayerTimes.Asar },
+          { key: 'maghrib', timeStr: prayerTimes.Maghrib },
+          { key: 'isya', timeStr: prayerTimes.Isya },
+        ];
+        for (const f of fardhuMap) {
+          const triggerId = `${now.toDateString()}-${f.key}-${currentHM}`;
+          if (f.timeStr === currentHM && alarms[f.key] && lastTriggeredRef.current !== triggerId) {
+            lastTriggeredRef.current = triggerId;
+            playAzanSound(f.key, undefined, adhanSound);
+            break;
+          }
+        }
       }
     }
-  }, [now, location, calculationMethod]);
+  }, [now, location, calculationMethod, notificationsEnabled, adhanSound, alarms]);
 
   const userTzLabel = getTimeZoneLabel();
   const timeFormatted = `${formatTwoDigits(now.getHours())}:${formatTwoDigits(now.getMinutes())}:${formatTwoDigits(now.getSeconds())} ${userTzLabel}`;
@@ -235,10 +281,31 @@ export const DashboardScreen = ({ navigation }: any) => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Header Greeting */}
-        <Text style={[styles.greetingText, { color: theme.textPrimary }]}>
-          {getGreeting(now.getHours())}
-        </Text>
+        {/* Header Brand & Greeting */}
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.greetingText, { color: theme.textPrimary }]}>
+              {getGreeting(now.getHours())}
+            </Text>
+            <Text style={[styles.brandSub, { color: theme.textSecondary }]}>
+              e-Istiwaain • Falak & Arah Kiblat
+            </Text>
+          </View>
+          <Image source={APP_ICON_COLOR} style={styles.headerLogo} resizeMode="contain" />
+        </View>
+
+        {azanState.isPlaying && (
+          <View style={styles.azanBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.azanBannerTitle}>🕌 Adzan Sedang Berkumandang</Text>
+              <Text style={styles.azanBannerSub}>{azanState.audioLabel}</Text>
+            </View>
+            <TouchableOpacity style={styles.azanBannerStopBtn} onPress={() => stopAzanSound()}>
+              <VolumeX color="#FFFFFF" size={14} />
+              <Text style={styles.azanBannerStopText}>Hentikan</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* CARD UTAMA GREEN EMERALD */}
         <View style={[styles.mainCard, { backgroundColor: theme.cardPrimary }]}>
@@ -247,9 +314,9 @@ export const DashboardScreen = ({ navigation }: any) => {
 
           {/* Jam Dual-Clock (WIB & Istiwa') */}
           <View style={styles.clockRow}>
-            {/* Kolom Kiri: WIB */}
+            {/* Kolom Kiri: Waktu Standar Lokal */}
             <View style={styles.clockCol}>
-              <Text style={styles.clockLabel}>Waktu UTC</Text>
+              <Text style={styles.clockLabel}>Waktu Standar ({userTzLabel})</Text>
               <Text style={[styles.clockValueWIB, { color: theme.accent }]}>{timeFormatted}</Text>
             </View>
 
@@ -262,8 +329,8 @@ export const DashboardScreen = ({ navigation }: any) => {
 
           {/* Countdown Imsak / Shalat */}
           <View style={styles.countdownSection}>
-            <Text style={styles.countdownSub}>Menuju Imsak...</Text>
-            <Text style={[styles.countdownMain, { color: theme.accent }]}>-03:45 Imsak</Text>
+            <Text style={styles.countdownSub}>Menuju {nextPrayerInfo.name}...</Text>
+            <Text style={[styles.countdownMain, { color: theme.accent }]}>{nextPrayerInfo.countdown} {nextPrayerInfo.name}</Text>
           </View>
 
           {/* Baris Lokasi (Dengan Running Text / Marquee) */}
@@ -345,10 +412,60 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 16, paddingTop: 50, paddingBottom: 40 },
 
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   greetingText: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 16,
+  },
+  brandSub: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  headerLogo: {
+    width: 44,
+    height: 44,
+  },
+  azanBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#09473E',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    gap: 10,
+  },
+  azanBannerTitle: {
+    color: '#FDE68A',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  azanBannerSub: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  azanBannerStopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  azanBannerStopText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 
   // CARD UTAMA
