@@ -1,57 +1,25 @@
-import { useState, useEffect } from 'react';
-import * as Location from 'expo-location';
 import { useAppStore } from '../store/useAppStore';
+import {
+  syncCurrentLocation,
+  useLocationRuntimeStore,
+} from '../services/locationService';
 
 export const useLocation = () => {
-  const [loading, setLoading] = useState<boolean>(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  const setUserLocation = useAppStore((state) => state.setUserLocation);
-  const userLocation = useAppStore((state) => state.userLocation);
+  const location = useAppStore((state) => state.userLocation);
+  const autoLocation = useAppStore((state) => state.autoLocation) ?? true;
+  const refreshing = useLocationRuntimeStore((state) => state.loading);
+  const errorMsg = useLocationRuntimeStore((state) => state.errorMsg);
+  const status = useLocationRuntimeStore((state) => state.status);
 
-  const fetchLocation = async () => {
-    setLoading(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Izin akses lokasi ditolak');
-        setLoading(false);
-        return;
-      }
+  const loading = !location && refreshing;
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const coords = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-      try {
-        const [place] = await Location.reverseGeocodeAsync(coords);
-        const cityName = place?.city || place?.subregion || place?.region || 'Lokasi Terdeteksi';
-        
-        setUserLocation({ ...coords, cityName }); // Simpan ke Zustand bersama nama kota
-      } catch {
-        setUserLocation(coords);
-      }
-
-
-      setErrorMsg(null);
-    } catch (err) {
-      setErrorMsg('Gagal mengambil koordinat GPS');
-    } finally {
-      setLoading(false);
-    }
+  return {
+    location,
+    loading,
+    refreshing,
+    errorMsg,
+    status,
+    autoLocation,
+    refetch: syncCurrentLocation,
   };
-
-  useEffect(() => {
-    if (!userLocation) {
-      fetchLocation();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  return { location: userLocation, loading, errorMsg, refetch: fetchLocation };
 };

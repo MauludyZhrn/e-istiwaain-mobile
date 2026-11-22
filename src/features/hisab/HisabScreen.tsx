@@ -22,9 +22,9 @@ import { IstiwaainiScene3D } from '../../components/IstiwaainiScene3D';
 export const HisabScreen = () => {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const theme = isDarkMode ? colors.dark : colors.light;
-  const { location } = useLocation();
+  const { location, refreshing, errorMsg, autoLocation, refetch } = useLocation();
 
-  const [useGps, setUseGps] = useState(false);
+  const [useGps, setUseGps] = useState<boolean>(autoLocation);
 
   // Input Parameter Tanggal & Waktu
   const now = new Date();
@@ -107,9 +107,29 @@ export const HisabScreen = () => {
     }
   }, [useGps, location]);
 
+  useEffect(() => {
+    if (autoLocation) {
+      setUseGps(true);
+    }
+  }, [autoLocation]);
+
   const handleGpsToggle = (value: boolean) => {
     setUseGps(value);
+    if (value) {
+      void refetch({ interactive: true });
+    }
   };
+
+  const gpsStatusText =
+    useGps && refreshing && !location
+      ? 'Mencari sinyal GPS...'
+      : useGps && location
+      ? location.addressName ||
+        location.cityName ||
+        `${location.latitude.toFixed(4)}°, ${location.longitude.toFixed(4)}°`
+      : useGps && errorMsg
+      ? errorMsg
+      : 'Aktifkan untuk isi koordinat otomatis';
 
   // Fungsi Eksekusi Perhitungan Falak
   const handleCalculate = () => {
@@ -178,11 +198,19 @@ export const HisabScreen = () => {
         {/* Toggle Gunakan GPS */}
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.rowBetween}>
-            <View style={styles.row}>
+            <View style={[styles.row, { flex: 1, paddingRight: 10 }]}>
               <MapPin color={theme.accent} size={20} />
-              <Text style={[styles.toggleLabel, { color: theme.textPrimary }]}>
-                Gunakan Koordinat GPS Saat Ini
-              </Text>
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={[styles.toggleLabel, { color: theme.textPrimary, marginLeft: 0 }]}>
+                  Gunakan Koordinat GPS Saat Ini
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}
+                >
+                  {gpsStatusText}
+                </Text>
+              </View>
             </View>
             <Switch
               value={useGps}

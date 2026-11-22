@@ -17,8 +17,8 @@ import {
   BookOpen,
   Grid,
   VolumeX,
+  RefreshCw,
 } from 'lucide-react-native';
-import * as Location from 'expo-location';
 
 import { useAppStore } from '../../store/useAppStore';
 import { colors } from '../../constants/colors';
@@ -40,6 +40,7 @@ const RunningText = ({ text, style }: { text: string; style: any }) => {
   const [containerWidth, setContainerWidth] = useState(0);
 
   useEffect(() => {
+    translateX.setValue(0);
     if (textWidth > containerWidth && containerWidth > 0) {
       const distance = textWidth - containerWidth + 24;
       const duration = distance * 40; // Kecepatan running text
@@ -65,7 +66,7 @@ const RunningText = ({ text, style }: { text: string; style: any }) => {
       animation.start();
       return () => animation.stop();
     }
-  }, [textWidth, containerWidth]);
+  }, [text, textWidth, containerWidth, translateX]);
 
   return (
     <View
@@ -119,14 +120,13 @@ const formatTwoDigits = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 export const DashboardScreen = ({ navigation }: any) => {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const theme = isDarkMode ? colors.dark : colors.light;
-  const { location } = useLocation();
+  const { location, refreshing, errorMsg, status, refetch } = useLocation();
   const calculationMethod = useAppStore((state) => state.calculationMethod);
   const alarms = useAppStore((state) => state.alarms);
   const notificationsEnabled = useAppStore((state) => state.notificationsEnabled) ?? true;
   const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
 
   const [now, setNow] = useState(new Date());
-  const [addressName, setAddressName] = useState('Memuat lokasi...');
   const [nextPrayerInfo, setNextPrayerInfo] = useState({
     name: 'Imsak',
     time: '--:--',
@@ -151,34 +151,18 @@ export const DashboardScreen = ({ navigation }: any) => {
     return () => clearInterval(timer);
   }, []);
 
-  // Reverse Geocoding (Ubah Koordinat Lat, Lng menjadi Nama Jalan/Kecamatan)
-  useEffect(() => {
-    const fetchAddress = async () => {
-      if (location) {
-        try {
-          const [place] = await Location.reverseGeocodeAsync({
-            latitude: location.latitude,
-            longitude: location.longitude,
-          });
-
-          if (place) {
-            const district = place.district || place.subregion || '';
-            const city = place.city || place.subregion || place.region || '';
-            const formatted = [district, city].filter(Boolean).join(', ');
-            setAddressName(formatted || 'Lokasi Terdeteksi');
-          } else {
-            setAddressName('Lokasi Tidak Dikenal');
-          }
-        } catch (error) {
-          setAddressName(`${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°`);
-        }
-      } else {
-        setAddressName('Mencari sinyal GPS...');
-      }
-    };
-
-    fetchAddress();
-  }, [location]);
+  const addressName =
+    location?.addressName ||
+    location?.cityName ||
+    (location
+      ? `${location.latitude.toFixed(4)}°, ${location.longitude.toFixed(4)}°`
+      : status === 'denied'
+      ? 'Izin lokasi ditolak • Ketuk untuk aktifkan'
+      : status === 'services-disabled'
+      ? 'GPS nonaktif • Ketuk untuk aktifkan'
+      : errorMsg
+      ? `${errorMsg} • Ketuk untuk coba lagi`
+      : 'Mencari sinyal GPS...');
 
   // 3. Hitung Waktu Shalat, Hitung Mundur, dan Jam Istiwa'
   useEffect(() => {
@@ -333,11 +317,20 @@ export const DashboardScreen = ({ navigation }: any) => {
             <Text style={[styles.countdownMain, { color: theme.accent }]}>{nextPrayerInfo.countdown} {nextPrayerInfo.name}</Text>
           </View>
 
-          {/* Baris Lokasi (Dengan Running Text / Marquee) */}
-          <View style={styles.locationContainer}>
+          {/* Baris Lokasi (Dengan Running Text / Marquee & Ketuk Refresh) */}
+          <TouchableOpacity
+            style={styles.locationContainer}
+            activeOpacity={0.8}
+            onPress={() => void refetch({ interactive: true })}
+          >
             <MapPin color={theme.accent} size={18} style={styles.pinIcon} />
             <RunningText text={addressName} style={styles.locationText} />
-          </View>
+            <RefreshCw
+              color="rgba(255, 255, 255, 0.8)"
+              size={15}
+              style={{ marginLeft: 8, opacity: refreshing ? 0.45 : 1 }}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* SECTION LAYANAN UTAMA */}

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +15,11 @@ import { IstiwaComponentScreen } from '../features/modules/IstiwaComponentScreen
 
 import { useAppStore } from '../store/useAppStore';
 import { colors } from '../constants/colors';
+import {
+  handleAppForegroundLocationSync,
+  startAutoLocationTracking,
+  stopAutoLocationTracking,
+} from '../services/locationService';
 
 // Tipe Param untuk Tab Bawah
 export type RootTabParamList = {
@@ -101,6 +107,57 @@ const MainTabNavigator = () => {
 
 // 2. Root Navigator Pembungkus Utama
 export const RootNavigator = () => {
+  const autoLocation = useAppStore((state) => state.autoLocation) ?? true;
+  const [hasHydrated, setHasHydrated] = useState(() =>
+    useAppStore.persist.hasHydrated()
+  );
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  useEffect(() => {
+    if (useAppStore.persist.hasHydrated()) {
+      setHasHydrated(true);
+      return;
+    }
+    const unsub = useAppStore.persist.onFinishHydration(() => {
+      setHasHydrated(true);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+    if (autoLocation) {
+      void startAutoLocationTracking();
+    } else {
+      stopAutoLocationTracking();
+    }
+
+    return () => {
+      stopAutoLocationTracking();
+    };
+  }, [hasHydrated, autoLocation]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (
+        (prevState === 'background' || prevState === 'inactive') &&
+        nextState === 'active' &&
+        hasHydrated &&
+        (useAppStore.getState().autoLocation ?? true)
+      ) {
+        void handleAppForegroundLocationSync();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [hasHydrated]);
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {/* Layar Utama dengan Bottom Tab */}

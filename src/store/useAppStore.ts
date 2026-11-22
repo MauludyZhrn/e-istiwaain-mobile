@@ -14,16 +14,21 @@ export type AdhanSoundType =
   | 'silent';
 export type CalculationMethodType = CalculationMethod;
 
+export interface UserLocationData {
+  latitude: number;
+  longitude: number;
+  cityName?: string;
+  addressName?: string;
+  accuracy?: number | null;
+  updatedAt?: number;
+}
+
 interface AppState {
   isDarkMode: boolean;
   toggleTheme: () => void;
 
-  userLocation: {
-    latitude: number;
-    longitude: number;
-    cityName?: string;
-  } | null;
-  setUserLocation: (location: { latitude: number; longitude: number; cityName?: string }) => void;
+  userLocation: UserLocationData | null;
+  setUserLocation: (location: UserLocationData) => void;
   autoLocation: boolean;
   setAutoLocation: (enabled: boolean) => void;
 

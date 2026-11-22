@@ -23,6 +23,7 @@ import {
   BellOff,
   Volume2, 
   VolumeX,
+  RefreshCw,
 } from 'lucide-react-native';
 import * as Notifications from 'expo-notifications';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
@@ -233,7 +234,21 @@ export const PrayerTimeScreen = () => {
   };
 
   const theme = isDarkMode ? colors.dark : colors.light;
-  const { location, loading } = useLocation();
+  const { location, loading, refreshing, errorMsg, status, refetch } = useLocation();
+
+  const latHem = location ? (location.latitude < 0 ? 'S' : 'U') : 'S';
+  const lngHem = location ? (location.longitude >= 0 ? 'T' : 'B') : 'T';
+  const locationDisplayText = location
+    ? `${location.cityName ? `${location.cityName} • ` : ''}${toDMS(location.latitude)} ${latHem} | ${toDMS(location.longitude)} ${lngHem}`
+    : loading
+    ? 'Memuat koordinat GPS...'
+    : status === 'services-disabled'
+    ? 'GPS nonaktif • Ketuk untuk aktifkan'
+    : status === 'denied'
+    ? 'Izin lokasi ditolak • Ketuk untuk aktifkan'
+    : errorMsg
+    ? `${errorMsg} • Ketuk untuk ulangi`
+    : 'Mencari koordinat GPS...';
 
   const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -527,16 +542,23 @@ export const PrayerTimeScreen = () => {
           )}
         </View>
 
-        <View style={[styles.rowGap, { marginTop: 8 }]}>
-          <MapPin color={theme.accent} size={16} />
-          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-            {loading
-              ? 'Memuat koordinat GPS...'
-              : location
-              ? `${toDMS(location.latitude)} S | ${toDMS(location.longitude)} E`
-              : 'Semarang, Jawa Tengah'}
-          </Text>
-        </View>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => void refetch({ interactive: true })}
+          style={[styles.rowBetween, { marginTop: 8 }]}
+        >
+          <View style={[styles.rowGap, { flex: 1, paddingRight: 8 }]}>
+            <MapPin color={theme.accent} size={16} />
+            <Text style={[styles.infoText, { color: theme.textSecondary, flex: 1 }]} numberOfLines={2}>
+              {locationDisplayText}
+            </Text>
+          </View>
+          <RefreshCw
+            color={theme.textSecondary}
+            size={14}
+            style={{ opacity: refreshing ? 0.4 : 1 }}
+          />
+        </TouchableOpacity>
       </View>
 
       {viewMode === 'daily' ? (

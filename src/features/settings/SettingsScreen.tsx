@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppStore, AdhanSoundType } from '../../store/useAppStore';
 import { showAppDialog } from '../../components/ui/AppDialog';
+import { useLocation } from '../../hooks/useLocation';
 import { colors } from '../../constants/colors';
 import { CalculationMethod } from '../../utils/falakMath';
 import {
@@ -76,6 +77,17 @@ export const SettingsScreen = () => {
   const setCalculationMethod = useAppStore((state) => state.setCalculationMethod);
 
   const theme = isDarkMode ? colors.dark : colors.light;
+  const { location, refreshing, errorMsg, refetch } = useLocation();
+
+  const autoGpsSubtext = !autoLocation
+    ? 'GPS otomatis nonaktif'
+    : refreshing && !location
+    ? 'Mendeteksi lokasi GPS...'
+    : location?.addressName || location?.cityName
+    ? location.addressName || location.cityName
+    : errorMsg
+    ? errorMsg
+    : 'Deteksi lokasi pengguna secara akurat';
 
   const [azanState, setAzanState] = useState<AzanPlaybackState>({
     isPlaying: false,
@@ -256,16 +268,24 @@ export const SettingsScreen = () => {
           <View style={styles.row}>
             <View style={styles.rowLeft}>
               <MapPin color={theme.iconi} size={20} />
-              <View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={[styles.itemText, { color: theme.textPrimary }]}>GPS Otomatis</Text>
-                <Text style={[styles.itemSubtext, { color: theme.textSecondary }]}>
-                  Deteksi lokasi pengguna secara akurat
+                <Text
+                  numberOfLines={1}
+                  style={[styles.itemSubtext, { color: theme.textSecondary }]}
+                >
+                  {autoGpsSubtext}
                 </Text>
               </View>
             </View>
             <Switch
               value={autoLocation}
-              onValueChange={(val) => setAutoLocation?.(val)}
+              onValueChange={(val) => {
+                setAutoLocation?.(val);
+                if (val) {
+                  void refetch({ interactive: true });
+                }
+              }}
               trackColor={{ false: theme.border, true: theme.textSecondary }}
               thumbColor={autoLocation ? theme.accent : theme.surface}
             />
