@@ -14,6 +14,7 @@ import { MapPin, Calculator, Eye, BookOpen, Sun, RotateCw, CheckCircle2 } from '
 
 import { useAppStore } from '../../store/useAppStore';
 import { showAppDialog } from '../../components/ui/AppDialog';
+import { RunningText } from '../../components/ui/RunningText';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { calculateFullHisab, getDefaultTimezone, getTimeZoneLabel } from '../../utils/falakMath';
@@ -204,12 +205,10 @@ export const HisabScreen = () => {
                 <Text style={[styles.toggleLabel, { color: theme.textPrimary, marginLeft: 0 }]}>
                   Gunakan Koordinat GPS Saat Ini
                 </Text>
-                <Text
-                  numberOfLines={1}
+                <RunningText
+                  text={gpsStatusText}
                   style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}
-                >
-                  {gpsStatusText}
-                </Text>
+                />
               </View>
             </View>
             <Switch

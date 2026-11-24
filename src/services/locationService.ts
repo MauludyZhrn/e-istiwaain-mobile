@@ -32,6 +32,10 @@ const GEOCODE_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_MAX_AGE_MS = 30 * 60 * 1000;
 const BALANCED_TIMEOUT_MS = 12000;
 const LOW_TIMEOUT_MS = 8000;
+const ADDRESS_FORMAT_VERSION = 2;
+
+const PLUS_CODE_REGEX = /^[A-Z0-9]{4,8}\+[A-Z0-9]{2,4}$/i;
+const PURE_NUMBER_REGEX = /^\d+[A-Za-z]?$/;
 
 let activeFetchPromise: Promise<boolean> | null = null;
 let watchStartingPromise: Promise<void> | null = null;
@@ -79,27 +83,77 @@ async function withTimeout<T>(
   }
 }
 
+function cleanAddressSegment(value?: string | null): string {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return '';
+  if (PLUS_CODE_REGEX.test(trimmed)) return '';
+  return trimmed;
+}
+
 function formatPlacemark(place: Location.LocationGeocodedAddress): {
+  streetName?: string;
   cityName: string;
   addressName: string;
 } {
-  const district = (place?.district || place?.subregion || '').trim();
-  const city = (place?.city || place?.subregion || place?.region || '').trim();
-  const region = (place?.region || '').trim();
+  const street = cleanAddressSegment(place?.street);
+  const streetNumber = cleanAddressSegment(place?.streetNumber);
+  const placeName = cleanAddressSegment(place?.name);
+  const district = cleanAddressSegment(place?.district);
+  const subregion = cleanAddressSegment(place?.subregion);
+  const city = cleanAddressSegment(place?.city);
+  const region = cleanAddressSegment(place?.region);
 
-  const parts: string[] = [];
-  for (const part of [district, city]) {
+  let streetPart = '';
+  if (street) {
     if (
-      part &&
-      !parts.some((existing) => existing.toLowerCase() === part.toLowerCase())
+      streetNumber &&
+      !street.toLowerCase().includes(streetNumber.toLowerCase())
     ) {
+      streetPart = `${street} No. ${streetNumber}`;
+    } else {
+      streetPart = street;
+    }
+  } else if (
+    placeName &&
+    !PURE_NUMBER_REGEX.test(placeName) &&
+    placeName.toLowerCase() !== district.toLowerCase() &&
+    placeName.toLowerCase() !== city.toLowerCase() &&
+    placeName.toLowerCase() !== subregion.toLowerCase() &&
+    placeName.toLowerCase() !== region.toLowerCase()
+  ) {
+    streetPart = placeName;
+  }
+
+  const areaParts = [
+    streetPart,
+    district,
+    city || subregion,
+    subregion && city ? '' : region,
+  ];
+  const parts: string[] = [];
+  for (const part of areaParts) {
+    if (!part) continue;
+    const lower = part.toLowerCase();
+    const isDuplicate = parts.some((existing) => {
+      const existingLower = existing.toLowerCase();
+      return (
+        existingLower === lower ||
+        existingLower.includes(lower) ||
+        lower.includes(existingLower)
+      );
+    });
+    if (!isDuplicate) {
       parts.push(part);
     }
   }
 
-  const cityName = city || region || 'Lokasi Terdeteksi';
+  const cityName = city || subregion || district || region || 'Lokasi Terdeteksi';
   const addressName = parts.join(', ') || region || 'Lokasi Terdeteksi';
-  return { cityName, addressName };
+  return {
+    streetName: streetPart || undefined,
+    cityName,
+    addressName,
+  };
 }
 
 async function applyCoordinates(coords: {
@@ -128,9 +182,13 @@ async function applyCoordinates(coords: {
       longitude
     ) >= GEOCODE_MIN_DISTANCE_METERS;
   const geocodeExpired = Date.now() - lastGeocodeAt > GEOCODE_MAX_AGE_MS;
+  const needsAddressUpgrade = existing?.addressVersion !== ADDRESS_FORMAT_VERSION;
   const shouldGeocode =
     !isGeocoding &&
-    (!existing?.addressName || movedEnoughForGeocode || geocodeExpired);
+    (!existing?.addressName ||
+      needsAddressUpgrade ||
+      movedEnoughForGeocode ||
+      geocodeExpired);
 
   if (!shouldGeocode) {
     return;
@@ -141,12 +199,14 @@ async function applyCoordinates(coords: {
     const places = await Location.reverseGeocodeAsync({ latitude, longitude });
     const place = places?.[0];
     if (place) {
-      const { cityName, addressName } = formatPlacemark(place);
+      const { streetName, cityName, addressName } = formatPlacemark(place);
       const latest = useAppStore.getState().userLocation;
       useAppStore.getState().setUserLocation({
         ...(latest ?? { latitude, longitude, accuracy, updatedAt: Date.now() }),
+        streetName,
         cityName,
         addressName,
+        addressVersion: ADDRESS_FORMAT_VERSION,
       });
       lastGeocodeCoords = { latitude, longitude };
       lastGeocodeAt = Date.now();

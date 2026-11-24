@@ -17,8 +17,10 @@ export type CalculationMethodType = CalculationMethod;
 export interface UserLocationData {
   latitude: number;
   longitude: number;
+  streetName?: string;
   cityName?: string;
   addressName?: string;
+  addressVersion?: number;
   accuracy?: number | null;
   updatedAt?: number;
 }
@@ -90,7 +92,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           alarms: { ...state.alarms, [key]: value },
         })),
-      adhanSound: 'makkah',
+      adhanSound: 'auto',
       setAdhanSound: (sound) => set({ adhanSound: sound }),
 
       // Metode Kalkulasi

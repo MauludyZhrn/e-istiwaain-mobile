@@ -20,6 +20,14 @@ import {
   startAutoLocationTracking,
   stopAutoLocationTracking,
 } from '../services/locationService';
+import {
+  stopAzanSound,
+  syncPrayerNotifications,
+} from '../services/soundService';
+import {
+  calculatePrayerTimes,
+  getDefaultTimezone,
+} from '../utils/falakMath';
 
 // Tipe Param untuk Tab Bawah
 export type RootTabParamList = {
@@ -108,6 +116,13 @@ const MainTabNavigator = () => {
 // 2. Root Navigator Pembungkus Utama
 export const RootNavigator = () => {
   const autoLocation = useAppStore((state) => state.autoLocation) ?? true;
+  const userLocation = useAppStore((state) => state.userLocation);
+  const alarms = useAppStore((state) => state.alarms);
+  const notificationsEnabled =
+    useAppStore((state) => state.notificationsEnabled) ?? true;
+  const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
+  const calculationMethod =
+    useAppStore((state) => state.calculationMethod) ?? 'Kemenag RI (Falak)';
   const [hasHydrated, setHasHydrated] = useState(() =>
     useAppStore.persist.hasHydrated()
   );
@@ -157,6 +172,40 @@ export const RootNavigator = () => {
       subscription.remove();
     };
   }, [hasHydrated]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+    if (!notificationsEnabled) {
+      void stopAzanSound();
+      void syncPrayerNotifications({}, alarms, false, adhanSound, {
+        requestPermission: false,
+      });
+      return;
+    }
+
+    const lat = userLocation?.latitude ?? -6.9982;
+    const lng = userLocation?.longitude ?? 110.4079;
+    const todayTimes = calculatePrayerTimes(
+      new Date(),
+      lat,
+      lng,
+      getDefaultTimezone(),
+      calculationMethod
+    );
+
+    void syncPrayerNotifications(todayTimes, alarms, true, adhanSound, {
+      requestPermission: false,
+    });
+  }, [
+    hasHydrated,
+    notificationsEnabled,
+    alarms,
+    adhanSound,
+    calculationMethod,
+    userLocation?.latitude,
+    userLocation?.longitude,
+  ]);
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

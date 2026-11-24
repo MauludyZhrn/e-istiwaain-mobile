@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Animated,
-  Easing,
   Dimensions,
   Image,
 } from 'react-native';
@@ -22,67 +20,17 @@ import {
 
 import { useAppStore } from '../../store/useAppStore';
 import { colors } from '../../constants/colors';
+import { APP_VERSION_LABEL } from '../../constants/appVersion';
+import { RunningText } from '../../components/ui/RunningText';
 import { useLocation } from '../../hooks/useLocation';
 import { calculatePrayerTimes, getDefaultTimezone, getTimeZoneLabel } from '../../utils/falakMath';
 import {
-  playAzanSound,
   stopAzanSound,
   subscribeAzanState,
   AzanPlaybackState,
 } from '../../services/soundService';
 
 const APP_ICON_COLOR = require('../../../assets/e-Istiwaain-Logo/png/icon-color_512.png');
-
-// --- KOMPONEN RUNNING TEXT (MARQUEE) ---
-const RunningText = ({ text, style }: { text: string; style: any }) => {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const [textWidth, setTextWidth] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  useEffect(() => {
-    translateX.setValue(0);
-    if (textWidth > containerWidth && containerWidth > 0) {
-      const distance = textWidth - containerWidth + 24;
-      const duration = distance * 40; // Kecepatan running text
-
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.delay(1500),
-          Animated.timing(translateX, {
-            toValue: -distance,
-            duration: duration,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-          Animated.delay(1500),
-          Animated.timing(translateX, {
-            toValue: 0,
-            duration: duration,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      animation.start();
-      return () => animation.stop();
-    }
-  }, [text, textWidth, containerWidth, translateX]);
-
-  return (
-    <View
-      style={{ flex: 1, overflow: 'hidden' }}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-    >
-      <Animated.Text
-        onLayout={(e) => setTextWidth(e.nativeEvent.layout.width)}
-        numberOfLines={1}
-        style={[style, { transform: [{ translateX }] }]}
-      >
-        {text}
-      </Animated.Text>
-    </View>
-  );
-};
 
 // --- HELPER UNTUK PASARAN JAWA ---
 const getJavaneseDateFormatted = (date: Date) => {
@@ -122,9 +70,6 @@ export const DashboardScreen = ({ navigation }: any) => {
   const theme = isDarkMode ? colors.dark : colors.light;
   const { location, refreshing, errorMsg, status, refetch } = useLocation();
   const calculationMethod = useAppStore((state) => state.calculationMethod);
-  const alarms = useAppStore((state) => state.alarms);
-  const notificationsEnabled = useAppStore((state) => state.notificationsEnabled) ?? true;
-  const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
 
   const [now, setNow] = useState(new Date());
   const [nextPrayerInfo, setNextPrayerInfo] = useState({
@@ -138,7 +83,6 @@ export const DashboardScreen = ({ navigation }: any) => {
     prayerKey: null,
     audioLabel: null,
   });
-  const lastTriggeredRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeAzanState((st) => setAzanState(st));
@@ -236,28 +180,8 @@ export const DashboardScreen = ({ navigation }: any) => {
           setTimeIstiwaStr(`${formatTwoDigits(iH)}:${formatTwoDigits(iM)}:${formatTwoDigits(iS)} Istiwa'`);
         }
       }
-
-      // Pemicu otomatis Adzan saat memasuki waktu shalat fardhu
-      if (notificationsEnabled && adhanSound !== 'silent' && now.getSeconds() <= 2) {
-        const currentHM = `${formatTwoDigits(now.getHours())}:${formatTwoDigits(now.getMinutes())}`;
-        const fardhuMap: Array<{ key: string; timeStr: string }> = [
-          { key: 'subuh', timeStr: prayerTimes.Subuh },
-          { key: 'dzuhur', timeStr: prayerTimes.Zuhur },
-          { key: 'ashar', timeStr: prayerTimes.Asar },
-          { key: 'maghrib', timeStr: prayerTimes.Maghrib },
-          { key: 'isya', timeStr: prayerTimes.Isya },
-        ];
-        for (const f of fardhuMap) {
-          const triggerId = `${now.toDateString()}-${f.key}-${currentHM}`;
-          if (f.timeStr === currentHM && alarms[f.key] && lastTriggeredRef.current !== triggerId) {
-            lastTriggeredRef.current = triggerId;
-            playAzanSound(f.key, undefined, adhanSound);
-            break;
-          }
-        }
-      }
     }
-  }, [now, location, calculationMethod, notificationsEnabled, adhanSound, alarms]);
+  }, [now, location, calculationMethod]);
 
   const userTzLabel = getTimeZoneLabel();
   const timeFormatted = `${formatTwoDigits(now.getHours())}:${formatTwoDigits(now.getMinutes())}:${formatTwoDigits(now.getSeconds())} ${userTzLabel}`;
@@ -272,7 +196,7 @@ export const DashboardScreen = ({ navigation }: any) => {
               {getGreeting(now.getHours())}
             </Text>
             <Text style={[styles.brandSub, { color: theme.textSecondary }]}>
-              e-Istiwaain • Falak & Arah Kiblat
+              e-Istiwaain {APP_VERSION_LABEL} • Falak & Arah Kiblat
             </Text>
           </View>
           <Image source={APP_ICON_COLOR} style={styles.headerLogo} resizeMode="contain" />

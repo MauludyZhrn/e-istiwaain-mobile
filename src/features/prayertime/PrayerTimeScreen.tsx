@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
 import {
   Calendar as CalendarIcon,
@@ -25,11 +24,11 @@ import {
   VolumeX,
   RefreshCw,
 } from 'lucide-react-native';
-import * as Notifications from 'expo-notifications';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  normalizeAdhanSound,
   playAzanSound,
   stopAzanSound,
   subscribeAzanState,
@@ -38,36 +37,13 @@ import {
 } from '../../services/soundService';
 import { useAppStore } from '../../store/useAppStore';
 import { showAppDialog } from '../../components/ui/AppDialog';
+import { RunningText } from '../../components/ui/RunningText';
 import { colors } from '../../constants/colors';
 import { useLocation } from '../../hooks/useLocation';
 import { toDMS } from '../../utils/falakMath';
 
 // Deteksi Expo Go yang Akurat & Aman untuk SDK Terbaru
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-
-// Inisialisasi Handler Notifikasi Global
-if (!isExpoGo) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () =>
-      ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      } as Notifications.NotificationBehavior),
-  });
-}
-
-// Setup Channel Android
-const setupAndroidChannel = async () => {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('adhan-notifications', {
-      name: 'Notifikasi Azan',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#10B981',
-    });
-  }
-};
 
 // --- FUNGSI KALKULASI WAKTU SHALAT ASTRONOMI (FALAK) ---
 const calculatePrayerTimes = (
@@ -190,13 +166,13 @@ export const PrayerTimeScreen = () => {
   const alarms = useAppStore((state) => state.alarms);
   const setAlarmToggle = useAppStore((state) => state.setAlarmToggle);
   const notificationsEnabled = useAppStore((state) => state.notificationsEnabled) ?? true;
+  const setNotificationsEnabled = useAppStore((state) => state.setNotificationsEnabled);
   const adhanSound = useAppStore((state) => state.adhanSound) ?? 'auto';
   const [azanState, setAzanState] = useState<AzanPlaybackState>({
     isPlaying: false,
     prayerKey: null,
     audioLabel: null,
   });
-  const lastTriggeredRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeAzanState((st) => setAzanState(st));
@@ -208,7 +184,7 @@ export const PrayerTimeScreen = () => {
       await stopAzanSound();
       return;
     }
-    if (adhanSound === 'silent') {
+    if (normalizeAdhanSound(adhanSound) === 'silent') {
       showAppDialog({
         variant: 'warning',
         icon: 'volume-x',
@@ -239,7 +215,11 @@ export const PrayerTimeScreen = () => {
   const latHem = location ? (location.latitude < 0 ? 'S' : 'U') : 'S';
   const lngHem = location ? (location.longitude >= 0 ? 'T' : 'B') : 'T';
   const locationDisplayText = location
-    ? `${location.cityName ? `${location.cityName} • ` : ''}${toDMS(location.latitude)} ${latHem} | ${toDMS(location.longitude)} ${lngHem}`
+    ? `${
+        location.addressName || location.cityName
+          ? `${location.addressName || location.cityName} • `
+          : ''
+      }${toDMS(location.latitude)} ${latHem} | ${toDMS(location.longitude)} ${lngHem}`
     : loading
     ? 'Memuat koordinat GPS...'
     : status === 'services-disabled'
@@ -317,54 +297,12 @@ export const PrayerTimeScreen = () => {
 
   const countdownText = `${hoursLeft < 10 ? '0' : ''}${hoursLeft}:${minsLeft < 10 ? '0' : ''}${minsLeft}:${secsLeft < 10 ? '0' : ''}${secsLeft}`;
 
-  // Sinkronisasi penjadwalan notifikasi Adzan otomatis
-  useEffect(() => {
-    syncPrayerNotifications(todayTimes, alarms, notificationsEnabled, adhanSound);
-  }, [
-    todayTimes.subuh,
-    todayTimes.dzuhur,
-    todayTimes.ashar,
-    todayTimes.maghrib,
-    todayTimes.isya,
-    alarms,
-    notificationsEnabled,
-    adhanSound,
-  ]);
-
-  // Pemicu otomatis suara Adzan saat jam memasuki waktu shalat (ketika aplikasi sedang terbuka)
-  useEffect(() => {
-    if (!notificationsEnabled || adhanSound === 'silent') return;
-    const hh = now.getHours() < 10 ? `0${now.getHours()}` : `${now.getHours()}`;
-    const mm = now.getMinutes() < 10 ? `0${now.getMinutes()}` : `${now.getMinutes()}`;
-    const currentHM = `${hh}:${mm}`;
-    const secs = now.getSeconds();
-
-    if (secs <= 2) {
-      const fardhuKeys: Array<keyof typeof todayTimes> = [
-        'subuh',
-        'dzuhur',
-        'ashar',
-        'maghrib',
-        'isya',
-      ];
-      for (const k of fardhuKeys) {
-        const triggerId = `${now.toDateString()}-${k}-${currentHM}`;
-        if (todayTimes[k] === currentHM && alarms[k] && lastTriggeredRef.current !== triggerId) {
-          lastTriggeredRef.current = triggerId;
-          playAzanSound(k, undefined, adhanSound);
-          break;
-        }
-      }
-    }
-  }, [now, todayTimes, alarms, notificationsEnabled, adhanSound]);
-
-  // FUNGSI ALARM YANG SUDAH DIPERBAIKI (BEBAS RED SCREEN)
+  // FUNGSI ALARM YANG TERHUBUNG DENGAN PENJADWALAN PUSAT
   const toggleAlarm = async (prayerKey: string, prayerName: string, _dateObj: Date) => {
     const isCurrentlyOn = !!alarms[prayerKey];
     const newStatus = !isCurrentlyOn;
     const nextAlarms = { ...alarms, [prayerKey]: newStatus };
 
-    // 1. Update state di UI / Zustand
     setAlarmToggle(prayerKey, newStatus);
 
     if (newStatus) {
@@ -379,17 +317,28 @@ export const PrayerTimeScreen = () => {
         return;
       }
 
+      if (!notificationsEnabled) {
+        setNotificationsEnabled(true);
+      }
+      const nextEnabled = true;
+
       const ok = await syncPrayerNotifications(
         todayTimes,
         nextAlarms,
-        notificationsEnabled,
-        adhanSound
+        nextEnabled,
+        adhanSound,
+        { requestPermission: true }
       );
       if (ok) {
+        const normalizedSound = normalizeAdhanSound(adhanSound);
+        const isReminderOnly = prayerKey === 'imsak' || prayerKey === 'terbit';
         const audioInfo =
-          adhanSound === 'silent'
+          normalizedSound === 'silent'
             ? 'Mode Senyap'
-            : prayerKey === 'subuh' && adhanSound !== 'biasa'
+            : isReminderOnly
+            ? 'Notifikasi Pengingat'
+            : normalizedSound === 'subuh' ||
+              (normalizedSound !== 'biasa' && prayerKey === 'subuh')
             ? 'Audio: Adzan Subuh'
             : 'Audio: Adzan Standar';
         showAppDialog({
@@ -409,7 +358,13 @@ export const PrayerTimeScreen = () => {
         });
       }
     } else {
-      await syncPrayerNotifications(todayTimes, nextAlarms, notificationsEnabled, adhanSound);
+      await syncPrayerNotifications(
+        todayTimes,
+        nextAlarms,
+        notificationsEnabled,
+        adhanSound,
+        { requestPermission: false }
+      );
       showAppDialog({
         variant: 'info',
         icon: 'bell-off',
@@ -549,9 +504,10 @@ export const PrayerTimeScreen = () => {
         >
           <View style={[styles.rowGap, { flex: 1, paddingRight: 8 }]}>
             <MapPin color={theme.accent} size={16} />
-            <Text style={[styles.infoText, { color: theme.textSecondary, flex: 1 }]} numberOfLines={2}>
-              {locationDisplayText}
-            </Text>
+            <RunningText
+              text={locationDisplayText}
+              style={[styles.infoText, { color: theme.textSecondary }]}
+            />
           </View>
           <RefreshCw
             color={theme.textSecondary}

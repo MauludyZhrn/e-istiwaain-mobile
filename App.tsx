@@ -12,10 +12,23 @@ import { colors } from './src/constants/colors';
 import { useAppStore } from './src/store/useAppStore';
 import {
   ensureAdhanNotificationChannels,
-  playAzanSound,
+  normalizeAdhanSound,
+  stopAzanSound,
+  trackActiveNotificationAdhan,
 } from './src/services/soundService';
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 if (!isExpoGo) {
@@ -45,22 +58,26 @@ export default function App() {
 
     const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
       const state = useAppStore.getState();
-      if (!state.notificationsEnabled || state.adhanSound === 'silent') return;
-      const data = notification.request.content.data as { prayerKey?: string } | undefined;
-      const prayerKey = data?.prayerKey || 'dzuhur';
-      if (prayerKey !== 'imsak' && prayerKey !== 'terbit') {
-        playAzanSound(prayerKey, undefined, state.adhanSound);
+      const data = notification.request.content.data as
+        | { prayerKey?: string; prayerName?: string; isInAppPlayback?: boolean }
+        | undefined;
+      if (data?.isInAppPlayback) return;
+      if (!state.notificationsEnabled || normalizeAdhanSound(state.adhanSound) === 'silent') {
+        return;
       }
+      const prayerKey = data?.prayerKey || 'dzuhur';
+      trackActiveNotificationAdhan(
+        notification.request.identifier,
+        prayerKey,
+        data?.prayerName,
+        state.adhanSound
+      );
     });
 
     const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const state = useAppStore.getState();
-      if (!state.notificationsEnabled || state.adhanSound === 'silent') return;
-      const data = response.notification.request.content.data as { prayerKey?: string } | undefined;
-      const prayerKey = data?.prayerKey || 'dzuhur';
-      if (prayerKey !== 'imsak' && prayerKey !== 'terbit') {
-        playAzanSound(prayerKey, undefined, state.adhanSound);
-      }
+      void stopAzanSound({
+        notificationIdToDismiss: response.notification.request.identifier,
+      });
     });
 
     return () => {

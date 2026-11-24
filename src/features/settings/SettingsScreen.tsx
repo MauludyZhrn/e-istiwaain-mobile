@@ -27,10 +27,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppStore, AdhanSoundType } from '../../store/useAppStore';
 import { showAppDialog } from '../../components/ui/AppDialog';
+import { RunningText } from '../../components/ui/RunningText';
+import {
+  APP_OTA_REVISION,
+  APP_VERSION_LABEL,
+  getAppVersionRuntimeInfo,
+} from '../../constants/appVersion';
 import { useLocation } from '../../hooks/useLocation';
 import { colors } from '../../constants/colors';
 import { CalculationMethod } from '../../utils/falakMath';
 import {
+  normalizeAdhanSound,
   playAzanSound,
   stopAzanSound,
   subscribeAzanState,
@@ -41,18 +48,14 @@ const LOGO_COLOR = require('../../../assets/e-Istiwaain-Logo/png/logo-color_512.
 const LOGO_WHITE = require('../../../assets/e-Istiwaain-Logo/png/logo-white_512.png');
 
 function getAdhanSoundLabel(sound: AdhanSoundType): string {
-  switch (sound) {
-    case 'auto':
-    case 'makkah':
-    case 'default':
-      return 'Otomatis (Adzan Subuh & Standar)';
+  switch (normalizeAdhanSound(sound)) {
     case 'biasa':
-    case 'madinah':
       return 'Adzan Standar (adzan_biasa.mp3)';
     case 'subuh':
       return 'Adzan Subuh (adzan_subuh.mp3)';
     case 'silent':
       return 'Senyap (Tanpa Suara)';
+    case 'auto':
     default:
       return 'Otomatis (Adzan Subuh & Standar)';
   }
@@ -77,14 +80,20 @@ export const SettingsScreen = () => {
   const setCalculationMethod = useAppStore((state) => state.setCalculationMethod);
 
   const theme = isDarkMode ? colors.dark : colors.light;
+  const versionInfo = getAppVersionRuntimeInfo();
+  const switchTrackColor = {
+    false: isDarkMode ? '#334155' : '#CBD5E1',
+    true: isDarkMode ? '#1B2CC1' : '#0B4F37',
+  };
   const { location, refreshing, errorMsg, refetch } = useLocation();
 
-  const autoGpsSubtext = !autoLocation
+  const resolvedLocationText = location?.addressName || location?.cityName || '';
+  const autoGpsSubtext: string = !autoLocation
     ? 'GPS otomatis nonaktif'
     : refreshing && !location
     ? 'Mendeteksi lokasi GPS...'
-    : location?.addressName || location?.cityName
-    ? location.addressName || location.cityName
+    : resolvedLocationText
+    ? resolvedLocationText
     : errorMsg
     ? errorMsg
     : 'Deteksi lokasi pengguna secara akurat';
@@ -127,8 +136,14 @@ export const SettingsScreen = () => {
       { label: 'Adzan Subuh (adzan_subuh.mp3)', value: 'subuh' },
       { label: 'Senyap / Tanpa Suara (Silent)', value: 'silent' },
     ]);
-    setModalSelectedValue(adhanSound);
-    setOnSelectCallback(() => (val: string) => setAdhanSound(val as AdhanSoundType));
+    setModalSelectedValue(normalizeAdhanSound(adhanSound));
+    setOnSelectCallback(() => (val: string) => {
+      const next = val as AdhanSoundType;
+      setAdhanSound(next);
+      if (next === 'silent') {
+        void stopAzanSound();
+      }
+    });
     setModalVisible(true);
   };
 
@@ -166,8 +181,8 @@ export const SettingsScreen = () => {
             <Switch
               value={isDarkMode}
               onValueChange={toggleTheme}
-              trackColor={{ false: theme.border, true: theme.textSecondary }}
-              thumbColor={isDarkMode ? theme.accent : theme.surface}
+              trackColor={switchTrackColor}
+              thumbColor={isDarkMode ? theme.accent : '#F8FAFC'}
             />
           </View>
         </View>
@@ -187,9 +202,14 @@ export const SettingsScreen = () => {
             </View>
             <Switch
               value={notificationsEnabled}
-              onValueChange={(val) => setNotificationsEnabled?.(val)}
-              trackColor={{ false: theme.border, true: theme.textSecondary }}
-              thumbColor={notificationsEnabled ? theme.accent : theme.surface}
+              onValueChange={(val) => {
+                setNotificationsEnabled?.(val);
+                if (!val) {
+                  void stopAzanSound();
+                }
+              }}
+              trackColor={switchTrackColor}
+              thumbColor={notificationsEnabled ? theme.accent : '#F8FAFC'}
             />
           </View>
 
@@ -270,12 +290,10 @@ export const SettingsScreen = () => {
               <MapPin color={theme.iconi} size={20} />
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={[styles.itemText, { color: theme.textPrimary }]}>GPS Otomatis</Text>
-                <Text
-                  numberOfLines={1}
+                <RunningText
+                  text={autoGpsSubtext}
                   style={[styles.itemSubtext, { color: theme.textSecondary }]}
-                >
-                  {autoGpsSubtext}
-                </Text>
+                />
               </View>
             </View>
             <Switch
@@ -286,8 +304,8 @@ export const SettingsScreen = () => {
                   void refetch({ interactive: true });
                 }
               }}
-              trackColor={{ false: theme.border, true: theme.textSecondary }}
-              thumbColor={autoLocation ? theme.accent : theme.surface}
+              trackColor={switchTrackColor}
+              thumbColor={autoLocation ? theme.accent : '#F8FAFC'}
             />
           </View>
 
@@ -310,15 +328,29 @@ export const SettingsScreen = () => {
         {/* SECTION: INFORMASI APLIKASI */}
         <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>INFORMASI</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.row}>
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() =>
+              showAppDialog({
+                variant: 'info',
+                icon: 'info',
+                title: 'Informasi Versi Aplikasi',
+                message: versionInfo.detailMessage,
+                confirmText: 'Tutup',
+              })
+            }
+          >
             <View style={styles.rowLeft}>
               <Smartphone color={theme.iconi} size={20} />
               <Text style={[styles.itemText, { color: theme.textPrimary }]}>Versi Aplikasi</Text>
             </View>
-            <Text style={[styles.itemSubtext, { color: theme.textSecondary, fontWeight: 'bold' }]}>
-              v1.0.0
-            </Text>
-          </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.itemSubtext, { color: theme.textSecondary, fontWeight: 'bold' }]}>
+                {APP_VERSION_LABEL} (OTA #{APP_OTA_REVISION})
+              </Text>
+              <ChevronRight color={theme.textSecondary} size={18} />
+            </View>
+          </TouchableOpacity>
 
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
@@ -348,8 +380,11 @@ export const SettingsScreen = () => {
             style={styles.brandFooterLogo}
             resizeMode="contain"
           />
-          <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-            Aplikasi e-Istiwaain © 2026
+          <Text style={[styles.footerText, { color: theme.textSecondary, fontWeight: '600' }]}>
+            Aplikasi e-Istiwaain {APP_VERSION_LABEL} © 2026
+          </Text>
+          <Text style={[styles.footerText, { color: theme.textSecondary, fontSize: 11, marginTop: 2 }]}>
+            {versionInfo.summaryLine}
           </Text>
         </View>
       </ScrollView>
